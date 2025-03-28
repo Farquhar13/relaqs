@@ -11,12 +11,14 @@ class ChangingTargetEnv(SingleQubitEnv):
         config_dict["observation_space_size"] = 8
         config_dict["U_target_list"] = []
         config_dict["target_generation_function"] = RandomSU2
+        config_dict["initial_generation_function"] = RandomSU2
         return config_dict
     
     def __init__(self, env_config):
         super().__init__(env_config)
         self.U_target_list = env_config["U_target_list"]
         self.target_generation_function = env_config["target_generation_function"]
+        self.inital_generation_function = env_config["initial_generation_function"]
 
     def set_target_gate(self):
         if len(self.U_target_list) == 0:
@@ -26,7 +28,7 @@ class ChangingTargetEnv(SingleQubitEnv):
         self.U_target_dm = self.U_target.copy()
 
     def set_initial_gate(self):
-        self.U_initial = self.target_generation_function().get_matrix()
+        self.U_initial = self.inital_generation_function().get_matrix()
         self.U_initial_dm = self.U_initial.copy()
 
     def reset(self, *, seed=None, options=None):
@@ -63,8 +65,6 @@ class NoisyChangingTargetEnv(ChangingTargetEnv, NoisySingleQubitEnv):
     
     def __init__(self, env_config):
         super().__init__(env_config)
-        self.U_target_list = env_config["U_target_list"]
-        self.target_generation_function = env_config["target_generation_function"]
 
     def set_target_gate(self):
         if len(self.U_target_list) == 0:
@@ -75,7 +75,7 @@ class NoisyChangingTargetEnv(ChangingTargetEnv, NoisySingleQubitEnv):
         self.U_target_dm = U.copy()
 
     def set_initial_gate(self):
-        self.U_initial_dm = self.target_generation_function().get_matrix()
+        self.U_initial_dm = self.inital_generation_function().get_matrix()
         self.U_initial = self.unitary_to_superoperator(self.U_initial_dm.copy())
 
     def get_observation(self):
