@@ -173,7 +173,7 @@ def main():
 
     n_training_episodes = 200
     n_episodes_for_inferencing = 10_000
-    noise_factor = 1
+    noise_factor = 1000
 
     u_target_list = [gates.RandomSU2()]
 
