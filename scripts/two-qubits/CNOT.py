@@ -1,10 +1,10 @@
-Zimport sys
-sys.path.append('./src/')
+import sys
+# sys.path.append('./src/')
 
 import ray
 from ray.rllib.algorithms.ddpg import DDPGConfig
 from ray.tune.registry import register_env
-from relaqs.environments.gate_synth_env_rllib_Haar import TwoQubitGateSynth
+from relaqs.environments.noisy_two_qubit_env import NoisyTwoQubitEnv
 from relaqs.save_results import SaveResults
 from relaqs.plot_data import plot_data
 
@@ -13,15 +13,15 @@ from relaqs import quantum_noise_data
 from relaqs import QUANTUM_NOISE_DATA_DIR
 from relaqs import RESULTS_DIR
 
-from qutip.operators import *
-from qutip import cnot
+# from qutip.operators import *
+from qutip.qip.operations import cnot
 
 import numpy as np
 import datetime
 
 
 def env_creator(config):
-    return TwoQubitGateSynth(config)
+    return NoisyTwoQubitEnv(config)
 
 def save_grad_to_file(resultdict):
     try:
@@ -52,14 +52,14 @@ def run(n_training_iterations=1, save=True, plot=True):
         alg_config = DDPGConfig()
         alg_config.framework("torch")
         
-        env_config = TwoQubitGateSynth.get_default_env_config()
+        env_config = NoisyTwoQubitEnv.get_default_env_config()
         CNOT = cnot().data.toarray()
         env_config["U_target"] = CNOT
 
         alg_config.environment("my_env", env_config=env_config)
     
         alg_config.rollouts(batch_mode="complete_episodes")
-        alg_config.train_batch_size = TwoQubitGateSynth.get_default_env_config()["steps_per_Haar"]
+        alg_config.train_batch_size = NoisyTwoQubitEnv.get_default_env_config()["steps_per_Haar"]
 
         ### working 1-3 sets
         alg_config.actor_lr = 4e-5

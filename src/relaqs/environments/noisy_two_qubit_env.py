@@ -7,7 +7,7 @@ from scipy.linalg import expm
 from qutip.superoperator import liouvillian, spre, spost
 from qutip import Qobj, tensor
 from qutip.operators import *
-from qutip import cnot, cphase
+from qutip.qip.operations import cnot, cphase
 
 from qiskit.synthesis.one_qubit.one_qubit_decompose import OneQubitEulerDecomposer
 from relaqs.api.utils import normalize

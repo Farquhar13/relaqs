@@ -35,8 +35,8 @@ def run(env=ChangingTargetEnv, n_training_episodes=1, u_target_list = [gates.Ran
 
     # ---------------------> Get quantum noise data <-------------------------
     t1_list, t2_list, detuning_list = sample_noise_parameters(t1_t2_noise_file, detuning_noise_file)
-    t1_list = [val * noise_factor for val in t1_list]
-    t2_list = [val * noise_factor for val in t2_list]
+    t1_list = [val/ noise_factor for val in t1_list]
+    t2_list = [val / noise_factor for val in t2_list]
     detuning_list = [val * noise_factor for val in detuning_list]
     env_config["relaxation_rates_list"] = [t1_list, t2_list]  # using real T1 data
     env_config["detuning_list"] = detuning_list
