@@ -52,6 +52,7 @@ class ChangingTargetEnv(SingleQubitEnv):
             "U_init": self.U_initial,
             "U_target": self.U_target,
             "target_generation_function": self.target_generation_function,
+            "initial_generation_function": self.initial_generation_function,
             "U_target_list": self.U_target_list,
         })
         return env_config
