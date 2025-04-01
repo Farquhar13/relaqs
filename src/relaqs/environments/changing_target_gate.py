@@ -13,7 +13,7 @@ class ChangingTargetEnv(SingleQubitEnv):
         config_dict["target_generation_function"] = RandomSU2
         config_dict["initial_generation_function"] = RandomSU2
         return config_dict
-    
+
     def __init__(self, env_config):
         super().__init__(env_config)
         self.U_target_list = env_config["U_target_list"]
@@ -22,13 +22,13 @@ class ChangingTargetEnv(SingleQubitEnv):
 
     def set_target_gate(self):
         if len(self.U_target_list) == 0:
-            self.U_target= self.target_generation_function().get_matrix()
+            self.U_target = self.target_generation_function().get_matrix()
         else:
             self.U_target = random.choice(self.U_target_list.get_matrix())
         self.U_target_dm = self.U_target.copy()
 
     def set_initial_gate(self):
-        self.U_initial = self.inital_generation_function().get_matrix()
+        self.U_initial = self.initial_generation_function().get_matrix()
         self.U_initial_dm = self.U_initial.copy()
 
     def reset(self, *, seed=None, options=None):
@@ -52,17 +52,18 @@ class ChangingTargetEnv(SingleQubitEnv):
             "U_init": self.U_initial,
             "U_target": self.U_target,
             "target_generation_function": self.target_generation_function,
+            "initial_generation_function": self.initial_generation_function,
             "U_target_list": self.U_target_list,
         })
         return env_config
-    
+
 class NoisyChangingTargetEnv(ChangingTargetEnv, NoisySingleQubitEnv):
     @classmethod
     def get_default_env_config(cls):
         config_dict = super().get_default_env_config()
         config_dict["observation_space_size"] = 35
         return config_dict
-    
+
     def __init__(self, env_config):
         super().__init__(env_config)
 
@@ -86,7 +87,6 @@ class NoisyChangingTargetEnv(ChangingTargetEnv, NoisySingleQubitEnv):
                                                  self.relaxation_rates_list[1])]  # could do list comprehension
         return np.append(normalized_relaxation_rates + normalized_detuning, U_diff)
 
-
     def return_env_config(self):
         env_config = super().return_env_config()
         env_config.update({"detuning_list": self.detuning_list,  # qubit detuning
@@ -95,5 +95,3 @@ class NoisyChangingTargetEnv(ChangingTargetEnv, NoisySingleQubitEnv):
                            "observation_space_size": 35,
                            })
         return env_config
-
-

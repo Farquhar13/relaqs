@@ -324,7 +324,7 @@ def network_config_creator(alg_config):
 
     return network_config
 
-def config_table(env_config, alg_config, filepath, continue_training=False, original_training_date = None):
+def config_table(env_config, alg_config, filepath, continue_training=False, original_training_date = None, noise_factor = 1):
     filtered_env_config = {}
     filtered_explor_config = {}
     network_config = network_config_creator(alg_config)
@@ -403,7 +403,7 @@ def config_table(env_config, alg_config, filepath, continue_training=False, orig
         for index, row in network_df.iterrows():
             f.write(f"| {row['Config Name']: <46} | {row['Current Value']: <21} | {row['Default Value']: <18} |\n")
         f.write("+------------------------------------------------+----------------------+--------------------+\n")
-        f.write(f"Continuation from previous training: {continue_training}\n")
+        f.write(f"Noise Factor: {noise_factor}\n")
         if continue_training:
             f.write(f"Training continued from results on: {original_training_date}\n")
 
@@ -413,21 +413,21 @@ def normalize(quantity, list_of_values):
     return (quantity - min(list_of_values) + 1E-15) / (max(list_of_values) - min(list_of_values) + 1E-15)
 
 def polar_vec_to_complex_matrix(vec, return_flat=False):
-    """ 
+    """
     The intended use of this function is to convert from the representation of the unitary
     in the agent's observation back to the unitary matrxi.
 
-    Converts a vector of polar coordinates to a unitary matrix. 
-    
+    Converts a vector of polar coordinates to a unitary matrix.
+
     The vector is of the form: [r1, phi1, r2, phi2, ...]
-    
+
     And the matrix is then: [-1 * r1 * exp(i * phi1 * 2pi),...] """
     # Convert polar coordinates to complex numbers
     complex_data = []
     for i in range(0, len(vec), 2):
         r = vec[i]
         phi = vec[i+1]
-        z = -1 * r * np.exp(1j * phi * 2*np.pi) 
+        z = -1 * r * np.exp(1j * phi * 2*np.pi)
         complex_data.append(z)
 
     # Reshape into square matrix
@@ -475,7 +475,7 @@ def do_inferencing(alg, n_episodes_for_inferencing, quantum_noise_file_path):
     alg: The trained model
     n_episodes_for_inferencing: Number of episodes to do during the training
     """
-    
+
     assert n_episodes_for_inferencing > 0
     env = return_env_from_alg(alg)
     obs, info = env.reset()
@@ -504,7 +504,7 @@ def do_inferencing(alg, n_episodes_for_inferencing, quantum_noise_file_path):
     return env, alg
 
 def load_model(path):
-    "path (str): Path to the file usually beginning with the word 'checkpoint' " 
+    "path (str): Path to the file usually beginning with the word 'checkpoint' "
     loaded_model = Algorithm.from_checkpoint(path)
     return loaded_model
 
@@ -531,7 +531,7 @@ def get_best_actions(filename):
 
         # Convert the list to a numpy array (optional)
         best_actions.append(float_values)
-    return best_actions, best_episode['Fidelity'].to_numpy() 
+    return best_actions, best_episode['Fidelity'].to_numpy()
 
 def run(env_class, gate, n_training_iterations=1, noise_file=""):
     """Args
@@ -589,7 +589,7 @@ def return_env_from_alg(alg):
 
 def load_and_analyze_best_unitary(data_path, U_target):
     df = pd.read_csv(data_path, names=['Fidelity', 'Reward', 'Actions', 'Flattened U', 'Episode Id'], header=0)
-    
+
     fidelity = df["Fidelity"]
     max_fidelity_idx = fidelity.argmax()
     best_flattened_unitary = eval(df.iloc[max_fidelity_idx, 3])

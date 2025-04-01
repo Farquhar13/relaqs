@@ -30,8 +30,8 @@ class NoisySingleQubitEnv(SingleQubitEnv):
         self.detuning_list = env_config["detuning_list"]
         self.detuning_update()
         self.U_target = self.unitary_to_superoperator(env_config["U_target"])
-        self.U_target_dm = None
-        self.U_initial_dm = None
+        self.U_target_dm = env_config["U_target"]
+        self.U_initial_dm = env_config["U_initial"]
         self.U_initial = self.unitary_to_superoperator(env_config["U_initial"])
         self.relaxation_rates_list = env_config["relaxation_rates_list"]
         self.relaxation_ops = env_config["relaxation_ops"]
@@ -48,11 +48,11 @@ class NoisySingleQubitEnv(SingleQubitEnv):
 
     @classmethod
     def unitary_to_superoperator(self, U):
-        return (spre(Qobj(U)) * spost(Qobj(U.conjugate().transpose()))).data.toarray()
+        return (spre(Qobj(U)) * spost(Qobj(U.conj().T))).data.toarray()
 
     def get_relaxation_rate(self):
         relaxation_size = len(self.relaxation_ops) # get number of relaxation ops
-        
+
         sampled_rate_list = []
         for ii in range(relaxation_size):
             sampled_rate_list.append(random.sample(self.relaxation_rates_list[ii],k=1)[0])
@@ -67,7 +67,7 @@ class NoisySingleQubitEnv(SingleQubitEnv):
                          normalized_relaxation_rates +
                          normalized_detuning,
                          self.unitary_to_observation(self.U))
-    
+
     def hamiltonian(self, detuning, alpha, gamma_magnitude, gamma_phase):
         return (detuning + alpha)*Z + gamma_magnitude*(np.cos(gamma_phase)*X + np.sin(gamma_phase)*Y)
 
@@ -79,7 +79,7 @@ class NoisySingleQubitEnv(SingleQubitEnv):
         starting_observeration = self.get_observation()
         info = {}
         return starting_observeration, info
-    
+
     def operator_update(self, num_time_bins):
         # Set noise opertors
         jump_ops = []
