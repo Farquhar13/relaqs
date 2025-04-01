@@ -7,14 +7,14 @@ from itertools import chain
 import matplotlib as mpl
 from relaqs import RESULTS_DIR
 from relaqs.api.utils import *
-from relaqs.api.gates import Rx,Ry,RandomSU2
+from relaqs.api.gates import Rx, Ry, RandomSU2
 
 
 def plot_results(save_dir, figure_title=""):
     with open(save_dir + "train_results_data.json") as file:  # q values and gradient vector norms
         results = json.load(file)
 
-    q_values = [r['q_values'] for r in results] 
+    q_values = [r['q_values'] for r in results]
     average_grad_norm = [r["average_gradnorm"] for r in results]
 
     # Flatten lists
@@ -26,7 +26,7 @@ def plot_results(save_dir, figure_title=""):
     q_series = pd.Series(q_values)
     q_windows = q_series.rolling(rolling_average_window)
     q_moving_averages = q_windows.mean().to_list()
-    
+
     # gradient norms
     grad_norm_series = pd.Series(average_grad_norm)
     grad_norm_windows = grad_norm_series.rolling(rolling_average_window)
@@ -37,7 +37,7 @@ def plot_results(save_dir, figure_title=""):
     rcParams['font.family'] = 'serif'
     mpl.style.use('seaborn-v0_8')
 
-    fig,(ax1, ax2,) = plt.subplots(1, 2) 
+    fig, (ax1, ax2,) = plt.subplots(1, 2)
     fig.suptitle(figure_title)
     fig.set_size_inches(10, 5)
 
@@ -56,13 +56,13 @@ def plot_results(save_dir, figure_title=""):
     plt.savefig(save_dir + "gradient_and_q_values.png")
 
 
-def plot_data(save_dir, episode_length= None, figure_title='', plot_filename= 'plot', perform_analysis=False):
+def plot_data(save_dir, episode_length=None, figure_title='', plot_filename='plot', perform_analysis=False):
     """ Currently works for constant episode_length """
-    #---------------------- Getting data from files  <--------------------------------------
+    # ---------------------- Getting data from files  <--------------------------------------
     df = pd.read_csv(save_dir + "env_data.csv", header=0)
-    fidelities = np.array(df.iloc[:,0])
-    rewards = np.array(df.iloc[:,1])
-    episode_ids = np.array(df.iloc[:,-1])
+    fidelities = np.array(df.iloc[:, 0])
+    rewards = np.array(df.iloc[:, 1])
+    episode_ids = np.array(df.iloc[:, -1])
 
     if perform_analysis:
         perform_action_analysis(df=df)
@@ -95,7 +95,7 @@ def plot_data(save_dir, episode_length= None, figure_title='', plot_filename= 'p
     avg_final_fidelity_per_episode = []
     avg_final_infelity_per_episode = []
     avg_sum_of_rewards_per_episode = []
-    for i in range (len(final_fidelity_per_episode)):
+    for i in range(len(final_fidelity_per_episode)):
         start = i - rolling_average_window if (i - rolling_average_window) > 0 else 0
         avg_final_fidelity_per_episode.append(np.mean(final_fidelity_per_episode[start: i + 1]))
         avg_final_infelity_per_episode.append(np.mean(final_infelity_per_episode[start: i + 1]))
@@ -107,15 +107,14 @@ def plot_data(save_dir, episode_length= None, figure_title='', plot_filename= 'p
     avg_final_infelity_per_episode = np.round(avg_final_infelity_per_episode, rounding_precision)
     avg_sum_of_rewards_per_episode = np.round(avg_sum_of_rewards_per_episode, rounding_precision)
 
-
-    if len(avg_final_fidelity_per_episode) >= 100: 
+    if len(avg_final_fidelity_per_episode) >= 100:
         print("Average final fidelity over last 100 episodes", np.mean(avg_final_fidelity_per_episode[-100:]))
 
     # -------------------------------> Plotting <-------------------------------------
     rcParams['font.family'] = 'serif'
     mpl.style.use('seaborn-v0_8')
 
-    fig,(ax1, ax2, ax3) = plt.subplots(1, 3)
+    fig, (ax1, ax2, ax3) = plt.subplots(1, 3)
     fig.suptitle(figure_title)
     fig.set_size_inches(10, 5)
 
@@ -140,11 +139,12 @@ def plot_data(save_dir, episode_length= None, figure_title='', plot_filename= 'p
     ax3.set_title("Sum of Rewards")
     ax3.set_title("c)", loc='left', fontsize='medium')
     ax3.set_xlabel("Episodes")
-    
+
     plt.tight_layout()
     plt.savefig(os.path.join(save_dir, plot_filename))
 
-def inference_plot(fidelities, infidelity, rewards, figure_title, save_dir, plot_filename):
+
+def inference_plot(fidelities, infidelity, rewards, avg_fidelity, figure_title, save_dir, plot_filename):
     # -------------------------------> Plotting Section <-------------------------------------
     # Configure plotting styles for consistent visualization aesthetics
     rcParams['font.family'] = 'serif'
@@ -152,7 +152,7 @@ def inference_plot(fidelities, infidelity, rewards, figure_title, save_dir, plot
 
     # Create a figure with 3 subplots arranged in a row
     fig, (ax1, ax2, ax3) = plt.subplots(1, 3)
-    fig.suptitle(figure_title)  # Set overall figure title
+    fig.suptitle(figure_title + f' --Average Fidelity: {avg_fidelity}')  # Set overall figure title
     fig.set_size_inches(10, 5)  # Adjust figure size
 
     # ----> Scatter plot of fidelity per instance <----
@@ -184,14 +184,15 @@ def inference_plot(fidelities, infidelity, rewards, figure_title, save_dir, plot
     else:
         plt.show()  # Display the figure interactively
 
-def inference_distribution(save_dir, fidelities, bin_step, gate):
+
+def inference_distribution(save_dir, fidelities, avg_fidelity, bin_step, gate):
     # -------------------------------> Fidelity Histogram Plot <-------------------------------------
 
     # Define bin edges for histogram plotting with a step of 0.1
     bins = np.arange(0.0, 1.1, bin_step)  # Bins range from 0.0 to 1.0 in 0.1 increments
 
     # Set histogram title (if gate information is provided)
-    count_title = f'[{gate}] Number of Occurrences vs Fidelity'
+    count_title = f'[{gate}] Number of Occurrences vs Fidelity.'
 
     # Compute histogram bin counts
     counts, bin_edges = np.histogram(fidelities, bins=bins)
@@ -203,7 +204,7 @@ def inference_distribution(save_dir, fidelities, bin_step, gate):
     # Set labels and title for the histogram
     plt.xlabel("Fidelity")
     plt.ylabel("Number of Occurrences")
-    plt.title(count_title)
+    plt.title(count_title + f' --Average Fidelity: {avg_fidelity}')
 
     # Set x-axis ticks to match bin intervals
     plt.xticks(bins)
@@ -255,11 +256,12 @@ def inference_bloch_sphere(save_dir, u_target_list, fidelities, gate):
                     bloch_sphere.show()
 
 def multiple_inference_visuals(df, figure_title, save_dir, plot_filename, bin_step=0.1,
-                           gate=None, perform_analysis=False):
+                               gate=None, perform_analysis=False):
     # Extract fidelity, rewards, and episode IDs from the DataFrame
     fidelities = np.array(df.iloc[:, 0])  # Fidelity values per episode
+    avg_fidelity = np.mean(fidelities)
     rewards = np.array(df.iloc[:, 1])  # Rewards per episode
-    episode_ids = np.array(df.iloc[:,-1])  # Episode indices
+    episode_ids = np.array(df.iloc[:, -1])  # Episode indices
     u_target_list = df.iloc[:, 5]
 
     # Extract U_target matrix and action sequences from the dataset
@@ -267,8 +269,7 @@ def multiple_inference_visuals(df, figure_title, save_dir, plot_filename, bin_st
     # Here, we directly extract them from the DataFrame.
     if perform_analysis:
         actions_array = np.array(df.iloc[:, 2].tolist())
-        action_stats_analysis(actions_array=actions_array,final_fidelity_per_episode=fidelities,save_dir=save_dir)
-
+        action_stats_analysis(actions_array=actions_array, final_fidelity_per_episode=fidelities, save_dir=save_dir)
 
     # Compute infidelity as 1 - fidelity for each episode
     infidelity = np.array([1 - fidelities[i] for i in range(len(episode_ids))])
@@ -278,12 +279,12 @@ def multiple_inference_visuals(df, figure_title, save_dir, plot_filename, bin_st
     fidelities = np.round(fidelities, rounding_precision)
     infidelity = np.round(infidelity, rounding_precision)
     rewards = np.round(rewards, rounding_precision)
+    avg_fidelity = np.round(avg_fidelity, rounding_precision)
 
-    inference_plot(fidelities, infidelity, rewards, figure_title, save_dir, plot_filename)
-    inference_distribution(save_dir, fidelities, bin_step=bin_step, gate=gate)
+    inference_plot(fidelities, infidelity, rewards, avg_fidelity, figure_title, save_dir, plot_filename)
+    inference_distribution(save_dir, fidelities, avg_fidelity, bin_step=bin_step, gate=gate)
     inference_bloch_sphere(save_dir, u_target_list, fidelities, gate)
 
 # if __name__ == "__main__":
 #     save_dir = RESULTS_DIR + "2024-02-27_19-31-17_H/"
 #     plot_data(save_dir, episode_length=2, figure_title="")
-

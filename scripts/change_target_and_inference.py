@@ -1,11 +1,16 @@
-import ray
-import numpy as np
-from ray.rllib.algorithms.ddpg import DDPGConfig
 from relaqs.environments.changing_target_gate import ChangingTargetEnv, NoisyChangingTargetEnv
 from relaqs.save_results import SaveResults
 from relaqs.plot_data import *
 from relaqs.api import gates
 from relaqs.api.utils import *
+import warnings
+import logging
+
+logging.getLogger("ray").setLevel(logging.ERROR)
+logging.getLogger("ray.rllib").setLevel(logging.ERROR)
+logging.getLogger("gym").setLevel(logging.ERROR)
+warnings.filterwarnings("ignore", message=".*Box bound precision lowered by casting.*")
+warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 # ibm_nairobi data chosen because sample_noise_parameter function defaults to ibm_nairobi machine + data for qubit label 1 unless otherwise specified
 t1_t2_noise_file = "april/ibm_nairobi_month_is_4.json"
@@ -13,7 +18,7 @@ t1_t2_noise_file = "april/ibm_nairobi_month_is_4.json"
 # detuning data
 detuning_noise_file = "qubit_detuning_data.json"
 
-def run(env=ChangingTargetEnv, n_training_episodes=1, u_target_list = [gates.RandomSU2()], save=True, plot=True):
+def run(env=ChangingTargetEnv, n_training_episodes=1, u_target_list = [gates.RandomSU2()], save=True, plot=True, noise_factor=1):
     ray.init(num_cpus=14)
 
     # ---------------------> Configure algorithm and Environment <-------------------------
@@ -27,6 +32,9 @@ def run(env=ChangingTargetEnv, n_training_episodes=1, u_target_list = [gates.Ran
 
     # ---------------------> Get quantum noise data <-------------------------
     t1_list, t2_list, detuning_list = sample_noise_parameters(t1_t2_noise_file, detuning_noise_file)
+    t1_list = [val/ noise_factor for val in t1_list]
+    t2_list = [val / noise_factor for val in t2_list]
+    detuning_list = [val * noise_factor for val in detuning_list]
     env_config["relaxation_rates_list"] = [t1_list, t2_list]  # using real T1 data
     env_config["detuning_list"] = detuning_list
 
@@ -34,8 +42,7 @@ def run(env=ChangingTargetEnv, n_training_episodes=1, u_target_list = [gates.Ran
 
     alg_config.rollouts(batch_mode="complete_episodes")
 
-    #---------------------------------Collins Configs---------------------------------
-    ### working 1-3 sets
+    #---------------------------------Alg Configs---------------------------------
     alg_config.actor_lr = 4e-5
     alg_config.critic_lr = 5e-4
 
@@ -44,22 +51,20 @@ def run(env=ChangingTargetEnv, n_training_episodes=1, u_target_list = [gates.Ran
     alg_config.num_steps_sampled_before_learning_starts = 100
     alg_config.actor_hiddens = [300, 300, 300, 300, 300]
     alg_config.exploration_config["scale_timesteps"] = 1000
-    alg_config.train_batch_size = 128
-    # alg_config.twin_q = True
-
+    alg_config.train_batch_size = 512
     # ---------------------------------------------------------------------
+
     alg = alg_config.build()
 
     n_training_episodes *= env_config['num_Haar_basis'] * env_config['steps_per_Haar']
 
     update_every_percent = 2
-    results = []
     update_interval = max(1, int(n_training_episodes * (update_every_percent / 100)))
 
     training_start_time = get_time()
     # ---------------------> Train Agent <-------------------------
     for i in range(n_training_episodes):
-        results.append(alg.train())
+        alg.train()
         # Print update every x%
         if (i + 1) % int(update_interval) == 0 or (i + 1) == n_training_episodes:
             percent_complete = (i + 1) / n_training_episodes * 100
@@ -67,7 +72,6 @@ def run(env=ChangingTargetEnv, n_training_episodes=1, u_target_list = [gates.Ran
 
     training_end_time = get_time()
     training_elapsed_time = training_end_time - training_start_time
-
 
     save_dir = ""
 
@@ -79,12 +83,12 @@ def run(env=ChangingTargetEnv, n_training_episodes=1, u_target_list = [gates.Ran
         print("Results saved to:", save_dir)
     # --------------------------------------------------------------
 
-    config_table(env_config=env_config,alg_config=alg_config,filepath=save_dir)
+    config_table(env_config=env_config,alg_config=alg_config,filepath=save_dir, noise_factor=noise_factor)
 
     # ---------------------> Plot Data <-------------------------
     if plot is True:
         assert save is True, "If plot=True, then save must also be set to True"
-        env_string = "Noisy " if isinstance(env, NoisyChangingTargetEnv) else "Noiseless"
+        env_string = f"[Noise Factor: {noise_factor}] Noisy " if isinstance(env, NoisyChangingTargetEnv) else "Noiseless"
         training_figure_title = " ".join(f"{target_gate}-" for target_gate in env_config["U_target_list"])
         plot_data(save_dir = save_dir, figure_title=env_string + training_figure_title, plot_filename='Training')
         print("Plots Created")
@@ -96,12 +100,10 @@ def inference_and_save(inference_list, save_dir, train_alg, n_episodes_for_infer
     columns = ['Fidelity', 'Rewards', 'Actions', 'Operator', 'Target Operator', 'Target DM', 'Initial DM', 'Episode Id']
 
     for curr_gate in inference_list:
-        # train_alg = copy.deepcopy(alg)
 
         gate_save_dir = save_dir + f'/{curr_gate}/'
         plot_filename = f'inference_{curr_gate}.png'
         os.makedirs(gate_save_dir)
-
 
         figure_title = f"[NOISY] Inferencing on Multiple Different {str(curr_gate)}."
 
@@ -163,20 +165,27 @@ def do_inferencing(env, train_alg, curr_gate):
 
 def main():
     env = NoisyChangingTargetEnv
-    n_training_episodes = 60
     save = True
     plot = True
-    n_episodes_for_inferencing = 1000
-    u_target_list = [gates.RandomSU2()]
-    alg, training_time, save_dir = run(env, n_training_episodes, u_target_list, save, plot)
-    inferencing_gate = [gates.RandomSU2(), gates.Rx(), gates.Ry(), gates.Rz(),
-                        gates.X(), gates.Y(), gates.Z(), gates.H(), gates.S(),gates.XY_combination(),gates.ZX_combination(),gates.HS()]
 
+    n_training_episodes = 200
+    n_episodes_for_inferencing = 10_000
+    noise_factor = 1000
+
+    u_target_list = [gates.RandomSU2()]
+
+    alg, training_time, save_dir = run(env, n_training_episodes, u_target_list, save, plot, noise_factor = noise_factor)
+
+    inferencing_gate = [gates.RandomSU2(), gates.Rx(), gates.Ry(), gates.Rz(),
+                        gates.X(), gates.Y(), gates.Z(), gates.H(), gates.S(),
+                        gates.XY_combination(),gates.ZX_combination(),gates.HS()]
+    print(f'\nStarting inferencing\n')
     inference_start = get_time()
     inference_and_save(inference_list=inferencing_gate, save_dir=save_dir, train_alg=alg,
                        n_episodes_for_inferencing=n_episodes_for_inferencing)
     inference_end = get_time()
     inference_elapsed_time = inference_end - inference_start
+
     print(f"Training Time: {training_time}")
     print(f"Inference Time + Saving Inference + Inference Visuals: {inference_elapsed_time}")
     print(f'Results saved to: {save_dir}')
