@@ -169,8 +169,8 @@ def main():
     save = True
     plot = True
 
-    n_training_episodes = 2
-    n_episodes_for_inferencing = 10
+    n_training_episodes = 200
+    n_episodes_for_inferencing = 10_000
     noise_factor = 1
 
     u_target_list = [gates.RandomSU2()]
