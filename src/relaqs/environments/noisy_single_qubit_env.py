@@ -3,7 +3,7 @@ import random
 import numpy as np
 import scipy.linalg as la
 from qutip import Qobj
-from qutip.superoperator import liouvillian
+from qutip.superoperator import liouvillian, spre, spost
 from qutip.operators import sigmam, sigmaz
 from relaqs.environments.single_qubit_env import SingleQubitEnv
 from relaqs.api import gates
@@ -48,7 +48,7 @@ class NoisySingleQubitEnv(SingleQubitEnv):
 
     @classmethod
     def unitary_to_superoperator(self, U):
-        return np.kron(U,U.conj().T)
+        return (spre(Qobj(U)) * spost(Qobj(U.conjugate().transpose()))).data.toarray()
 
     def get_relaxation_rate(self):
         relaxation_size = len(self.relaxation_ops) # get number of relaxation ops
