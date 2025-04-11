@@ -109,6 +109,8 @@ def plot_data(save_dir, episode_length=None, figure_title='', plot_filename='plo
 
     if len(avg_final_fidelity_per_episode) >= 100:
         print("Average final fidelity over last 100 episodes", np.mean(avg_final_fidelity_per_episode[-100:]))
+    if len(avg_sum_of_rewards_per_episode) >= 100:
+        print("Average final reward over last 100 episodes", np.mean(avg_sum_of_rewards_per_episode[-100:]))
 
     # -------------------------------> Plotting <-------------------------------------
     rcParams['font.family'] = 'serif'

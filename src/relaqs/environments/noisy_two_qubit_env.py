@@ -56,6 +56,18 @@ exchangeOperator3 = XX+ZZ
 CNOT = cnot().data.toarray()
 CZ = cphase(np.pi).data.toarray()
 
+C_MATRIX = np.array([[1, 1, 1], [-1, 1, -1], [1, -1, -1]])
+C_MATRIX_INV = np.linalg.inv(C_MATRIX)
+HSH = H @ S @ H
+SdaggerH = Sdagger @ H
+
+# magic basis
+B = 1 / np.sqrt(2) * np.array([[1., 0, 0, 1.j], [0, 1.j, 1., 0],
+                               [0, 1.j, -1., 0], [1., 0, 0, -1.j]])  # Magic Basis
+
+# magic basis dagger
+B_dagger = np.conj(B).T
+
 
 class NoisyTwoQubitEnv(gym.Env):
     @classmethod
@@ -74,7 +86,9 @@ class NoisyTwoQubitEnv(gym.Env):
             "relaxation_rates_list": [[0],[0],[0],[0]], # for now
             "relaxation_ops": [sigmam1,sigmam2,Qobj(Z1),Qobj(Z2)], #relaxation operator lists for T1 and T2, respectively
             # "observation_space_size": 2*256 + 1 + 4 + 2 # 2*16 = (complex number)*(density matrix elements = 4)^2, + 1 for fidelity + 4 for relaxation rate + 2 for detuning
-            "observation_space_size": 2*16 + 1 + 4 + 2 # 2*16 = (complex number)*(target unitary matrix elements = 4)^2, + 1 for fidelity + 4 for relaxation rate + 2 for detuning
+            # "observation_space_size": 2*16 + 1 + 4 + 2 # 2*16 = (complex number)*(target unitary matrix elements = 4)^2, + 1 for fidelity + 4 for relaxation rate + 2 for detuning
+            # "observation_space_size": 2 * 256 + 2,
+            "observation_space_size": 2 * 16 + 2
         }
 
     #physics: https://journals.aps.org/prapplied/pdf/10.1103/PhysRevApplied.10.054062, eq(2)
@@ -125,8 +139,8 @@ class NoisyTwoQubitEnv(gym.Env):
         self.L_array = []  # Liouvillian for each time bin
         self.U_array = []  # propagation operators for each time bin
         self.U = self.U_initial.copy()  # multiplied propagtion operators
-        # self.state = self.unitary_to_observation(self.U_initial)  # starting observation space
-        self.state = self.unitary_to_observation(self.unitary_U_target)  # starting observation space
+        self.state = self.unitary_to_observation(self.U_initial)  # starting observation space
+        # self.state = self.unitary_to_observation(self.unitary_U_target)  # starting observation space
         self.prev_fidelity = 0  # previous step' fidelity for rewarding
         self.alpha_max = self.PiFreq / 2
         self.g_eff_max = self.PiFreq / 2
@@ -162,19 +176,25 @@ class NoisyTwoQubitEnv(gym.Env):
     def get_observation(self):
         normalized_detuning = [normalize(self.detuning[0], self.detuning_list[0]),
                                normalize(self.detuning[1], self.detuning_list[1])]
-        normalized_relaxation_rates = [normalize(self.relaxation_rate[0], self.relaxation_rates_list[0]),
-                                       normalize(self.relaxation_rate[1], self.relaxation_rates_list[1]),
-                                       normalize(self.relaxation_rate[2], self.relaxation_rates_list[2]),
-                                       normalize(self.relaxation_rate[3], self.relaxation_rates_list[3])]
-        return np.append([self.compute_fidelity()] +
-                          normalized_relaxation_rates +
-                          normalized_detuning,
-                          self.unitary_to_observation(self.unitary_U_target))
-    
+        # normalized_relaxation_rates = [normalize(self.relaxation_rate[0], self.relaxation_rates_list[0]),
+        #                                normalize(self.relaxation_rate[1], self.relaxation_rates_list[1]),
+        #                                normalize(self.relaxation_rate[2], self.relaxation_rates_list[2]),
+        #                                normalize(self.relaxation_rate[3], self.relaxation_rates_list[3])]
+        # return np.append([self.compute_fidelity()] +
+        #                   normalized_relaxation_rates +
+        #                   normalized_detuning,
+        #                   self.unitary_to_observation(self.unitary_U_target))
+        # U_diff = self._U_target @ self.U_initial.conj().T
+        # return np.append(normalized_detuning,
+        #                 self.unitary_to_observation(self._U_target))
+        return np.append(normalized_detuning,
+                         self.unitary_to_observation(self.unitary_U_target))
+
     def compute_fidelity(self):
-        U_target_dagger = self.unitary_to_superoperator(self.unitary_U_target.conjugate().transpose())
-        F = float(np.abs(np.trace(U_target_dagger @ self.U))) / (self.U.shape[0])
-        return F
+        # U_target_dagger = self.unitary_to_superoperator(self.unitary_U_target.conjugate().transpose())
+        # self._U_target.conjugate().transpose()
+        return float(np.abs(np.trace(self._U_target.conjugate().transpose() @ self.U))) / (self.U.shape[0])
+        # return F
 
     def unitary_to_observation(self, U):
         return (
@@ -187,7 +207,8 @@ class NoisyTwoQubitEnv(gym.Env):
         )
 
     def reset(self, *, seed=None, options=None):
-        self.initialActions = self.KakActionCalculation()        
+        self.initialActions = self.KakActionCalculation()
+        # self.U = self.U_initial.copy()
         self.state = self.get_observation()
         self.current_Haar_num = 1
         self.current_step_per_Haar = 1
@@ -455,65 +476,66 @@ class NoisyTwoQubitEnv(gym.Env):
                 else:  # Because H_tot[jj] does not exist
                     self.H_tot1_4.append(factor * H_elem)
 
-        self.L = ([])  # at every step we calculate L again because minimal time bin changes
+        # self.L = ([])  # at every step we calculate L again because minimal time bin changes
         self.U = np.eye(16)  # identity
-        self.unitary_U = np.eye(4)
+        # self.U = self.U_initial.copy()
+        # self.unitary_U = np.eye(4)
 
         for jj in range(0, num_time_bins):
             L = (liouvillian(Qobj(self.H_tot1_1[jj]), jump_ops, data_only=False, chi=None)).data.toarray()  # Liouvillian calc
-            self.L_array.append(L)
+            # self.L_array.append(L)
             Ut = la.expm(self.final_time / num_time_bins * L)  # time evolution (propagation operator)
-            unitary_Ut = la.expm(-1j * self.H_tot1_1[jj] * self.final_time / num_time_bins)
+            # unitary_Ut = la.expm(-1j * self.H_tot1_1[jj] * self.final_time / num_time_bins)
             self.U = Ut @ self.U  # calculate total propagation until the time we are at
-            self.unitary_U = unitary_Ut @ self.unitary_U
+            # self.unitary_U = unitary_Ut @ self.unitary_U
 
         for jj in range(0, num_time_bins):
             L = (liouvillian(Qobj(self.H_tot2_1[jj]), jump_ops, data_only=False, chi=None)).data.toarray()  # Liouvillian calc
-            self.L_array.append(L)
+            # self.L_array.append(L)
             Ut = la.expm(self.final_time / num_time_bins * L)  # time evolution (propagation operator)
-            unitary_Ut = la.expm(-1j * self.H_tot2_1[jj] * self.final_time / num_time_bins)
+            # unitary_Ut = la.expm(-1j * self.H_tot2_1[jj] * self.final_time / num_time_bins)
             self.U = Ut @ self.U  # calculate total propagation until the time we are at
-            self.unitary_U = unitary_Ut @ self.unitary_U
+            # self.unitary_U = unitary_Ut @ self.unitary_U
 
         for jj in range(0, num_time_bins):
             L = (liouvillian(Qobj(self.H_tot1_2[jj]), jump_ops, data_only=False, chi=None)).data.toarray()  # Liouvillian calc
-            self.L_array.append(L)
+            # self.L_array.append(L)
             Ut = la.expm(self.final_time / num_time_bins * L)  # time evolution (propagation operator)
-            unitary_Ut = la.expm(-1j * self.H_tot1_2[jj] * self.final_time / num_time_bins)
+            # unitary_Ut = la.expm(-1j * self.H_tot1_2[jj] * self.final_time / num_time_bins)
             self.U = Ut @ self.U  # calculate total propagation until the time we are at
-            self.unitary_U = unitary_Ut @ self.unitary_U
+            # self.unitary_U = unitary_Ut @ self.unitary_U
 
         for jj in range(0, num_time_bins):
             L = (liouvillian(Qobj(self.H_tot2_2[jj]), jump_ops, data_only=False, chi=None)).data.toarray()  # Liouvillian calc
-            self.L_array.append(L)
+            # self.L_array.append(L)
             Ut = la.expm(self.final_time / num_time_bins * L)  # time evolution (propagation operator)
-            unitary_Ut = la.expm(-1j * self.H_tot2_2[jj] * self.final_time / num_time_bins)
+            # unitary_Ut = la.expm(-1j * self.H_tot2_2[jj] * self.final_time / num_time_bins)
             self.U = Ut @ self.U  # calculate total propagation until the time we are at
-            self.unitary_U = unitary_Ut @ self.unitary_U
+            # self.unitary_U = unitary_Ut @ self.unitary_U
 
         for jj in range(0, num_time_bins):
             L = (liouvillian(Qobj(self.H_tot1_3[jj]), jump_ops, data_only=False, chi=None)).data.toarray()  # Liouvillian calc
-            self.L_array.append(L)
+            # self.L_array.append(L)
             Ut = la.expm(self.final_time / num_time_bins * L)  # time evolution (propagation operator)
-            unitary_Ut = la.expm(-1j * self.H_tot1_3[jj] * self.final_time / num_time_bins)
+            # unitary_Ut = la.expm(-1j * self.H_tot1_3[jj] * self.final_time / num_time_bins)
             self.U = Ut @ self.U  # calculate total propagation until the time we are at
-            self.unitary_U = unitary_Ut @ self.unitary_U
+            # self.unitary_U = unitary_Ut @ self.unitary_U
 
         for jj in range(0, num_time_bins):
             L = (liouvillian(Qobj(self.H_tot2_3[jj]), jump_ops, data_only=False, chi=None)).data.toarray()  # Liouvillian calc
-            self.L_array.append(L)
+            # self.L_array.append(L)
             Ut = la.expm(self.final_time / num_time_bins * L)  # time evolution (propagation operator)
-            unitary_Ut = la.expm(-1j * self.H_tot2_3[jj] * self.final_time / num_time_bins)
+            # unitary_Ut = la.expm(-1j * self.H_tot2_3[jj] * self.final_time / num_time_bins)
             self.U = Ut @ self.U  # calculate total propagation until the time we are at
-            self.unitary_U = unitary_Ut @ self.unitary_U
+            # self.unitary_U = unitary_Ut @ self.unitary_U
 
         for jj in range(0, num_time_bins):
             L = (liouvillian(Qobj(self.H_tot1_4[jj]), jump_ops, data_only=False, chi=None)).data.toarray()  # Liouvillian calc
-            self.L_array.append(L)
+            # self.L_array.append(L)
             Ut = la.expm(self.final_time / num_time_bins * L)  # time evolution (propagation operator)
-            unitary_Ut = la.expm(-1j * self.H_tot1_4[jj] * self.final_time / num_time_bins)
+            # unitary_Ut = la.expm(-1j * self.H_tot1_4[jj] * self.final_time / num_time_bins)
             self.U = Ut @ self.U  # calculate total propagation until the time we are at
-            self.unitary_U = unitary_Ut @ self.unitary_U
+            # self.unitary_U = unitary_Ut @ self.unitary_U
 
         # Reward and fidelity calculation
         fidelity = self.compute_fidelity()
@@ -590,10 +612,7 @@ class NoisyTwoQubitEnv(gym.Env):
             assert np.isclose(np.linalg.det(U), 1), "Determinant of U is not 1"
 
             # 1. Unconjugate U into the magic basis
-            B = 1 / np.sqrt(2) * np.array([[1., 0, 0, 1.j], [0, 1.j, 1., 0],
-                                        [0, 1.j, -1., 0], [1., 0, 0, -1.j]]) # Magic Basis
-            
-            U_prime = np.conj(B).T @ U @ B
+            U_prime = B_dagger @ U @ B
 
             # Isolating the maximal torus
             Theta = lambda U: np.conj(U)
@@ -633,17 +652,16 @@ class NoisyTwoQubitEnv(gym.Env):
             assert np.isclose(np.linalg.det(K1), 1), "Determinant of K1 is not 1"
 
             # 6. Extracting Local Gates
-            L = B @ K1 @ np.conj(B).T  # Left Local Product
-            R = B @ K2 @ np.conj(B).T  # Right Local Product
+            L = B @ K1 @ B_dagger  # Left Local Product
+            R = B @ K2 @ B_dagger  # Right Local Product
             
             phase1, L1, L2 = decompose_one_qubit_product(L)  # L1 (top), L2(bottom)
             phase2, R1, R2 = decompose_one_qubit_product(R)  # R1 (top), R2(bottom)
 
             # 7. Extracting the Canonical Parameters
-            C = np.array([[1, 1, 1], [-1, 1, -1], [1, -1, -1]])  # Coefficient Matrix
 
             theta_vec = np.angle(np.diag(A))[:3]  # theta vector
-            a0, a1, a2 = np.linalg.inv(C) @ theta_vec  # Computing the "a"-vector
+            a0, a1, a2 = C_MATRIX_INV @ theta_vec  # Computing the "a"-vector
 
             # 8. Unpack Parameters and Put into Weyl chamber
             c0, c1, c2 = 2*a1, -2*a0, 2*a2 # Unpack parameters
@@ -680,22 +698,24 @@ class NoisyTwoQubitEnv(gym.Env):
         initialActions[12]  = self.singleQubitActionCalculation(H)[2]
         
         initialActions[13] = self.canonicalActionCalculation(c0,c1,c2,2)
-        
-        initialActions[14]  = self.singleQubitActionCalculation(H@S@H)[0]
-        initialActions[15]  = self.singleQubitActionCalculation(H@S@H)[0]
-        initialActions[16]  = self.singleQubitActionCalculation(H@S@H)[1]
-        initialActions[17]  = self.singleQubitActionCalculation(H@S@H)[1]
-        initialActions[18]  = self.singleQubitActionCalculation(H@S@H)[2]
-        initialActions[19]  = self.singleQubitActionCalculation(H@S@H)[2]
+
+        initialActions[14] = self.singleQubitActionCalculation(HSH)[0]
+        initialActions[15] = self.singleQubitActionCalculation(HSH)[0]
+        initialActions[16] = self.singleQubitActionCalculation(HSH)[1]
+        initialActions[17] = self.singleQubitActionCalculation(HSH)[1]
+        initialActions[18] = self.singleQubitActionCalculation(HSH)[2]
+        initialActions[19] = self.singleQubitActionCalculation(HSH)[2]
         
         initialActions[20] = self.canonicalActionCalculation(c0,c1,c2,3)
-        
-        initialActions[21] = self.singleQubitActionCalculation(L1@Sdagger@H)[0]
-        initialActions[22] = self.singleQubitActionCalculation(L2@Sdagger@H)[0]
-        initialActions[23] = self.singleQubitActionCalculation(L1@Sdagger@H)[1]
-        initialActions[24] = self.singleQubitActionCalculation(L2@Sdagger@H)[1]
-        initialActions[25] = self.singleQubitActionCalculation(L1@Sdagger@H)[2]
-        initialActions[26] = self.singleQubitActionCalculation(L2@Sdagger@H)[2]
+
+        L1SdaggerH = L1 @ SdaggerH
+        L2SdaggerH = L2 @ SdaggerH
+        initialActions[21] = self.singleQubitActionCalculation(L1SdaggerH)[0]
+        initialActions[22] = self.singleQubitActionCalculation(L2SdaggerH)[0]
+        initialActions[23] = self.singleQubitActionCalculation(L1SdaggerH)[1]
+        initialActions[24] = self.singleQubitActionCalculation(L2SdaggerH)[1]
+        initialActions[25] = self.singleQubitActionCalculation(L1SdaggerH)[2]
+        initialActions[26] = self.singleQubitActionCalculation(L2SdaggerH)[2]
         
         return initialActions
     
@@ -728,8 +748,8 @@ class NoisyTwoQubitEnv(gym.Env):
     
     def canonicalActionCalculation(self, c0, c1, c2, index=1):
         
-        twoQubitAction = 0
-        
+        # twoQubitAction = 0
+
         if index == 1:
             b = 1/2*(c0+c1-c2)
         elif index ==2:

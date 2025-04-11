@@ -5,6 +5,7 @@ import ray
 from ray.rllib.algorithms.ddpg import DDPGConfig
 from ray.tune.registry import register_env
 from relaqs.environments.noisy_two_qubit_env import NoisyTwoQubitEnv
+# from relaqs.environments.experimental_noisy_two_qubit import NoisyTwoQubitEnv
 from relaqs.save_results import SaveResults
 from relaqs.plot_data import plot_data
 import logging
@@ -61,37 +62,38 @@ def run(n_training_episodes=1, save=True, plot=True):
     env_config = NoisyTwoQubitEnv.get_default_env_config()
     CNOT = cnot().data.toarray()
     env_config["U_target"] = CNOT
+    env_config["steps_per_Haar"] = 1
 
     alg_config.environment(NoisyTwoQubitEnv, env_config=env_config)
     
     alg_config.rollouts(batch_mode="complete_episodes")
 
         ### working 1-3 sets
-    alg_config.actor_lr = 4e-5
-    alg_config.critic_lr = 5e-4
-
-    alg_config.actor_hidden_activation = "relu"
-    alg_config.critic_hidden_activation = "relu"
-    alg_config.num_steps_sampled_before_learning_starts = 1000
-    alg_config.actor_hiddens = [30,30,30]
-    alg_config.exploration_config["scale_timesteps"] = 10000
-    alg_config.train_batch_size = 1
-        # ---------------------------------Alg Configs---------------------------------
     # alg_config.actor_lr = 4e-5
     # alg_config.critic_lr = 5e-4
     #
     # alg_config.actor_hidden_activation = "relu"
     # alg_config.critic_hidden_activation = "relu"
-    # alg_config.num_steps_sampled_before_learning_starts = 100
-    # alg_config.actor_hiddens = [300, 300, 300, 300, 300]
-    # alg_config.exploration_config["scale_timesteps"] = 1000
-    # alg_config.train_batch_size = 512
+    # alg_config.num_steps_sampled_before_learning_starts = 1000
+    # alg_config.actor_hiddens = [30,30,30]
+    # alg_config.exploration_config["scale_timesteps"] = 10000
+    # alg_config.train_batch_size = 1
+        # ---------------------------------Alg Configs---------------------------------
+    alg_config.actor_lr = 4e-5
+    alg_config.critic_lr = 5e-4
+
+    alg_config.actor_hidden_activation = "relu"
+    alg_config.critic_hidden_activation = "relu"
+    alg_config.num_steps_sampled_before_learning_starts = 100
+    alg_config.actor_hiddens = [500] * 7
+    alg_config.exploration_config["scale_timesteps"] = 1000
+    alg_config.train_batch_size = 512
     # ---------------------------------------------------------------------
 
 
     alg = alg_config.build()
 
-    # n_training_episodes *= env_config['num_Haar_basis'] * env_config['steps_per_Haar']
+    n_training_episodes *= env_config['num_Haar_basis'] * env_config['steps_per_Haar']
 
     update_every_percent = 2
     update_interval = max(1, int(n_training_episodes * (update_every_percent / 100)))
@@ -128,8 +130,8 @@ def run(n_training_episodes=1, save=True, plot=True):
 
 
 def main():
-    # n_training_episodes = 20
-    n_training_episodes = 1
+    n_training_episodes = 55
+    # n_training_episodes = 1
     save = True
     plot = True
     run(n_training_episodes, save, plot)
