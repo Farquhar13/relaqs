@@ -38,6 +38,8 @@ class NoisySingleQubitEnv(SingleQubitEnv):
         self.relaxation_rate = self.get_relaxation_rate()
         self.U = self.U_initial.copy()  # multiplied propagtion operators
         self.state = self.unitary_to_observation(self.U_initial)  # starting observation space
+        self.step_index = 0
+        self.step_1_actions = []
 
     def detuning_update(self):
         # Random detuning selection
@@ -78,6 +80,7 @@ class NoisySingleQubitEnv(SingleQubitEnv):
         self.detuning_update()
         starting_observeration = self.get_observation()
         info = {}
+        self.step_index = 0
         return starting_observeration, info
 
     def operator_update(self, num_time_bins):
@@ -99,6 +102,12 @@ class NoisySingleQubitEnv(SingleQubitEnv):
         return info_string
 
     def step(self, action):
+        self.step_index += 1
+        if self.step_index == 1:
+            self.step_1_actions = action
+        action = self.step_1_actions
+        #print("step index, ", self.step_index, " actions ", action)
+        
         num_time_bins = 2 ** (self.current_Haar_num - 1) # Haar number decides the number of time bins
 
         # gamma is the complex amplitude of the control field
