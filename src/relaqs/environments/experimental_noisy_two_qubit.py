@@ -56,8 +56,20 @@ exchangeOperator3 = XX + ZZ
 CNOT = cnot().data.toarray()
 CZ = cphase(np.pi).data.toarray()
 
+C_MATRIX = np.array([[1, 1, 1], [-1, 1, -1], [1, -1, -1]])
+C_MATRIX_INV = np.linalg.inv(C_MATRIX)
+HSH = H @ S @ H
+SdaggerH = Sdagger @ H
 
-class NoisyTwoQubitEnv(gym.Env):
+# magic basis
+B = 1 / np.sqrt(2) * np.array([[1., 0, 0, 1.j], [0, 1.j, 1., 0],
+                               [0, 1.j, -1., 0], [1., 0, 0, -1.j]])  # Magic Basis
+
+# magic basis dagger
+B_dagger = np.conj(B).T
+
+
+class ExperimentalNoisyTwoQubitEnv(gym.Env):
     @classmethod
     def get_default_env_config(cls):
         return {
@@ -76,8 +88,9 @@ class NoisyTwoQubitEnv(gym.Env):
             "relaxation_ops": [sigmam1, sigmam2, Qobj(Z1), Qobj(Z2)],
             # relaxation operator lists for T1 and T2, respectively
             # "observation_space_size": 2*256 + 1 + 4 + 2 # 2*16 = (complex number)*(density matrix elements = 4)^2, + 1 for fidelity + 4 for relaxation rate + 2 for detuning
-            "observation_space_size": 2 * 16 + 1 + 4 + 2
-            # 2*16 = (complex number)*(target unitary matrix elements = 4)^2, + 1 for fidelity + 4 for relaxation rate + 2 for detuning
+            # "observation_space_size": 2*16 + 1 + 4 + 2 # 2*16 = (complex number)*(target unitary matrix elements = 4)^2, + 1 for fidelity + 4 for relaxation rate + 2 for detuning
+            # "observation_space_size": 2 * 256 + 2,
+            "observation_space_size": 2 * 16 + 2
         }
 
     # physics: https://journals.aps.org/prapplied/pdf/10.1103/PhysRevApplied.10.054062, eq(2)
@@ -131,8 +144,8 @@ class NoisyTwoQubitEnv(gym.Env):
         self.L_array = []  # Liouvillian for each time bin
         self.U_array = []  # propagation operators for each time bin
         self.U = self.U_initial.copy()  # multiplied propagtion operators
-        # self.state = self.unitary_to_observation(self.U_initial)  # starting observation space
-        self.state = self.unitary_to_observation(self.unitary_U_target)  # starting observation space
+        self.state = self.unitary_to_observation(self.U_initial)  # starting observation space
+        # self.state = self.unitary_to_observation(self.unitary_U_target)  # starting observation space
         self.prev_fidelity = 0  # previous step' fidelity for rewarding
         self.alpha_max = self.PiFreq / 2
         self.g_eff_max = self.PiFreq / 2
@@ -168,19 +181,22 @@ class NoisyTwoQubitEnv(gym.Env):
     def get_observation(self):
         normalized_detuning = [normalize(self.detuning[0], self.detuning_list[0]),
                                normalize(self.detuning[1], self.detuning_list[1])]
-        normalized_relaxation_rates = [normalize(self.relaxation_rate[0], self.relaxation_rates_list[0]),
-                                       normalize(self.relaxation_rate[1], self.relaxation_rates_list[1]),
-                                       normalize(self.relaxation_rate[2], self.relaxation_rates_list[2]),
-                                       normalize(self.relaxation_rate[3], self.relaxation_rates_list[3])]
-        return np.append([self.compute_fidelity()] +
-                         normalized_relaxation_rates +
-                         normalized_detuning,
+        # normalized_relaxation_rates = [normalize(self.relaxation_rate[0], self.relaxation_rates_list[0]),
+        #                                normalize(self.relaxation_rate[1], self.relaxation_rates_list[1]),
+        #                                normalize(self.relaxation_rate[2], self.relaxation_rates_list[2]),
+        #                                normalize(self.relaxation_rate[3], self.relaxation_rates_list[3])]
+        # return np.append([self.compute_fidelity()] +
+        #                   normalized_relaxation_rates +
+        #                   normalized_detuning,
+        #                   self.unitary_to_observation(self.unitary_U_target))
+        # U_diff = self._U_target @ self.U_initial.conj().T
+        # return np.append(normalized_detuning,
+        #                 self.unitary_to_observation(self._U_target))
+        return np.append(normalized_detuning,
                          self.unitary_to_observation(self.unitary_U_target))
 
     def compute_fidelity(self):
-        U_target_dagger = self.unitary_to_superoperator(self.unitary_U_target.conjugate().transpose())
-        F = float(np.abs(np.trace(U_target_dagger @ self.U))) / (self.U.shape[0])
-        return F
+        return float(np.abs(np.trace(self._U_target.conjugate().transpose() @ self.U))) / (self.U.shape[0])
 
     def unitary_to_observation(self, U):
         return (
@@ -223,244 +239,184 @@ class NoisyTwoQubitEnv(gym.Env):
         info = {}
         return starting_observeration, info
 
-    def update_total_H(self, H_array, num_time_bins):
-        H_tot = []
+    def parse_actions(self, action):
+        # Determine modifiers based on current_Haar_num
+        if self.current_Haar_num == 1:
+            # Use initialActions for everything and positive alpha
+            alpha_sign = 1
+            use_initial = True
+        elif self.current_Haar_num == 2:
+            # Use initialActions for single qubit gates, negative alpha
+            alpha_sign = -1
+            use_initial = True
+        else:
+            # Don't use initialActions, positive alpha
+            alpha_sign = 1
+            use_initial = False
+
+        # Calculate all parameters at once with minimal branching
+        # Single qubit gate 1
+        alpha1_1 = alpha_sign * self.alpha_max * (action[0] + (self.initialActions[0] if use_initial else 0))
+        alpha2_1 = alpha_sign * self.alpha_max * (action[1] + (self.initialActions[1] if use_initial else 0))
+        gamma_magnitude1_1 = self.gamma_magnitude_max * (action[2] + (self.initialActions[2] if use_initial else 0))
+        gamma_magnitude2_1 = self.gamma_magnitude_max * (action[3] + (self.initialActions[3] if use_initial else 0))
+        gamma_phase1_1 = self.gamma_phase_max * (action[4] + (self.initialActions[4] if use_initial else 0))
+        gamma_phase2_1 = self.gamma_phase_max * (action[5] + (self.initialActions[5] if use_initial else 0))
+
+        # Single qubit gate 2
+        alpha1_2 = alpha_sign * self.alpha_max * (action[7] + (self.initialActions[7] if use_initial else 0))
+        alpha2_2 = alpha_sign * self.alpha_max * (action[8] + (self.initialActions[8] if use_initial else 0))
+        gamma_magnitude1_2 = self.gamma_magnitude_max * (action[9] + (self.initialActions[9] if use_initial else 0))
+        gamma_magnitude2_2 = self.gamma_magnitude_max * (action[10] + (self.initialActions[10] if use_initial else 0))
+        gamma_phase1_2 = self.gamma_phase_max * (action[11] + (self.initialActions[11] if use_initial else 0))
+        gamma_phase2_2 = self.gamma_phase_max * (action[12] + (self.initialActions[12] if use_initial else 0))
+
+        # Single qubit gate 3
+        alpha1_3 = alpha_sign * self.alpha_max * (action[14] + (self.initialActions[14] if use_initial else 0))
+        alpha2_3 = alpha_sign * self.alpha_max * (action[15] + (self.initialActions[15] if use_initial else 0))
+        gamma_magnitude1_3 = self.gamma_magnitude_max * (action[16] + (self.initialActions[16] if use_initial else 0))
+        gamma_magnitude2_3 = self.gamma_magnitude_max * (action[17] + (self.initialActions[17] if use_initial else 0))
+        gamma_phase1_3 = self.gamma_phase_max * (action[18] + (self.initialActions[18] if use_initial else 0))
+        gamma_phase2_3 = self.gamma_phase_max * (action[19] + (self.initialActions[19] if use_initial else 0))
+
+        # Single qubit gate 4
+        alpha1_4 = alpha_sign * self.alpha_max * (action[21] + (self.initialActions[21] if use_initial else 0))
+        alpha2_4 = alpha_sign * self.alpha_max * (action[22] + (self.initialActions[22] if use_initial else 0))
+        gamma_magnitude1_4 = self.gamma_magnitude_max * (action[23] + (self.initialActions[23] if use_initial else 0))
+        gamma_magnitude2_4 = self.gamma_magnitude_max * (action[24] + (self.initialActions[24] if use_initial else 0))
+        gamma_phase1_4 = self.gamma_phase_max * (action[25] + (self.initialActions[25] if use_initial else 0))
+        gamma_phase2_4 = self.gamma_phase_max * (action[26] + (self.initialActions[26] if use_initial else 0))
+
+        # Two qubit gates - handle special case for Haar_num == 1
+        if self.current_Haar_num == 1:
+            g_eff1 = self.g_eff_max * (action[6] + self.initialActions[6])
+            g_eff2 = self.g_eff_max * (action[13] + self.initialActions[13])
+            g_eff3 = self.g_eff_max * (action[20] + self.initialActions[20])
+        else:
+            g_eff1 = self.g_eff_max * action[6]
+            g_eff2 = self.g_eff_max * action[13]
+            g_eff3 = self.g_eff_max * action[20]
+
+        # Return all calculated values
+        return (
+            alpha1_1, alpha2_1, gamma_magnitude1_1, gamma_magnitude2_1, gamma_phase1_1, gamma_phase2_1,
+            alpha1_2, alpha2_2, gamma_magnitude1_2, gamma_magnitude2_2, gamma_phase1_2, gamma_phase2_2,
+            alpha1_3, alpha2_3, gamma_magnitude1_3, gamma_magnitude2_3, gamma_phase1_3, gamma_phase2_3,
+            alpha1_4, alpha2_4, gamma_magnitude1_4, gamma_magnitude2_4, gamma_phase1_4, gamma_phase2_4,
+            g_eff1, g_eff2, g_eff3
+        )
+
+    def hamiltonian_update(self, num_time_bins, H_tot, H_array, *hamiltonian_args):
+        H = self.hamiltonian(*hamiltonian_args)
+        H_array.append(H)
         for ii, H_elem in enumerate(H_array):
-            Haar_num = self.current_Haar_num - np.floor(
-                ii / self.steps_per_Haar)  # Haar_num: label which Haar wavelet, current_Haar_num: order in the array
-            for jj in range(num_time_bins):
-                factor = (-1) ** np.floor(jj / (2 ** (Haar_num - 1)))
+            for jj in range(0, num_time_bins):
+                Haar_num = self.current_Haar_num - np.floor(
+                    ii / self.steps_per_Haar)  # Haar_num: label which Haar wavelet, current_Haar_num: order in the array
+                factor = (-1) ** np.floor(jj / (2 ** (Haar_num - 1)))  # factor flips the sign every 2^(Haar_num-1)
                 if ii > 0:
                     H_tot[jj] += factor * H_elem
                 else:  # Because H_tot[jj] does not exist
-                    H_tot[jj].append(factor * H_elem)
-        return H_tot
+                    H_tot.append(factor * H_elem)
 
-    def propagate(self, H_tot_list, jump_ops, delta_t, num_time_bins):
+    def operator_update(self, H_tot, num_time_bins, jump_ops):
         for jj in range(0, num_time_bins):
-            L = liouvillian(Qobj(H_tot_list[jj]), jump_ops, data_only=False, chi=None).data.toarray() # Liouvillian calc
-            self.L_array.append(L)
-            Ut = la.expm(delta_t * L) # time evolution (propagation operator)
-            unitary_Ut = la.expm(-1j * H_tot_list[jj] * delta_t)
-            self.U = Ut @ self.U # calculate total propagation until the time we are at
-            self.unitary_U = unitary_Ut @ self.unitary_U
+            L = (liouvillian(Qobj(H_tot[jj]), jump_ops, data_only=False,
+                             chi=None)).data.toarray()  # Liouvillian calc
+            Ut = la.expm(self.final_time / num_time_bins * L)  # time evolution (propagation operator)
+            self.U = Ut @ self.U  # calculate total propagation until the time we are at
 
+    def compute_reward(self, fidelity):
+        return (-3 * np.log10(1.0 - fidelity) + np.log10(1.0 - self.prev_fidelity)) + (3 * fidelity - self.prev_fidelity)
+
+    def is_episode_over(self, fidelity):
+        truncated = False
+        terminated = False
+        if fidelity >= 1:
+            truncated = True  # truncated when target fidelity reached
+        elif (self.current_Haar_num >= self.num_Haar_basis) and (self.current_step_per_Haar >= self.steps_per_Haar):  # terminate when all Haar is tested
+            terminated = True
+        return truncated, terminated
+
+    def Haar_update(self):
+        if (self.current_step_per_Haar == self.steps_per_Haar):  # For each Haar basis, if all trial steps ends, them move to next haar wavelet
+            self.current_Haar_num += 1
+            self.current_step_per_Haar = 1
+        else:
+            self.current_step_per_Haar += 1
 
     def step(self, action):
         num_time_bins = 2 ** (self.current_Haar_num - 1)
         self.initialActions = self.KakActionCalculation()
+        (
+            alpha1_1, alpha2_1, gamma_magnitude1_1, gamma_magnitude2_1,
+            gamma_phase1_1, gamma_phase2_1,
+            alpha1_2, alpha2_2, gamma_magnitude1_2, gamma_magnitude2_2,
+            gamma_phase1_2, gamma_phase2_2,
+            alpha1_3, alpha2_3, gamma_magnitude1_3, gamma_magnitude2_3,
+            gamma_phase1_3, gamma_phase2_3,
+            alpha1_4, alpha2_4, gamma_magnitude1_4, gamma_magnitude2_4,
+            gamma_phase1_4, gamma_phase2_4,
+            g_eff1, g_eff2, g_eff3
+        ) = self.parse_actions(action)
 
-        ### First single qubit gate
+        self.H2_1_array = []  # Array of Hs at each Haar wavelet
+        self.H2_2_array = []  # Array of Hs at each Haar wavelet
+        self.H2_3_array = []  # Array of Hs at each Haar wavelet
 
-        if self.current_Haar_num == 1:
-            alpha1_1 = self.alpha_max * (action[0] + self.initialActions[0])
-            alpha2_1 = self.alpha_max * (action[1] + self.initialActions[1])
+        self.H1_1_array = []  # Array of Hs at each Haar wavelet
+        self.H1_2_array = []  # Array of Hs at each Haar wavelet
+        self.H1_3_array = []  # Array of Hs at each Haar wavelet
+        self.H1_4_array = []  # Array of Hs at each Haar wavelet
 
-            gamma_magnitude1_1 = self.gamma_magnitude_max * (action[2] + self.initialActions[2])
-            gamma_magnitude2_1 = self.gamma_magnitude_max * (action[3] + self.initialActions[3])
+        # H_tot for adding Hs at each time bins
+        self.H_tot2_1 = []
+        self.H_tot2_2 = []
+        self.H_tot2_3 = []
 
-            gamma_phase1_1 = self.gamma_phase_max * (action[4] + self.initialActions[4])
-            gamma_phase2_1 = self.gamma_phase_max * (action[5] + self.initialActions[5])
-        elif self.current_Haar_num == 2:
-            alpha1_1 = - self.alpha_max * (action[0] + self.initialActions[0])
-            alpha2_1 = - self.alpha_max * (action[1] + self.initialActions[1])
+        self.H_tot1_1 = []
+        self.H_tot1_2 = []
+        self.H_tot1_3 = []
+        self.H_tot1_4 = []
 
-            gamma_magnitude1_1 = self.gamma_magnitude_max * (action[2] + self.initialActions[2])
-            gamma_magnitude2_1 = self.gamma_magnitude_max * (action[3] + self.initialActions[3])
+        self.hamiltonian_update(num_time_bins, self.H_tot2_1, self.H2_1_array,self.detuning[0], self.detuning[1], 0, 0, g_eff1, 0, 0, 0, 0)
+        self.hamiltonian_update(num_time_bins, self.H_tot2_2, self.H2_2_array, self.detuning[0], self.detuning[1], 0, 0, g_eff2, 0, 0, 0, 0)
+        self.hamiltonian_update(num_time_bins, self.H_tot2_3, self.H2_3_array, self.detuning[0], self.detuning[1], 0, 0, g_eff3, 0, 0, 0, 0)
 
-            gamma_phase1_1 = self.gamma_phase_max * (action[4] + self.initialActions[4])
-            gamma_phase2_1 = self.gamma_phase_max * (action[5] + self.initialActions[5])
-        else:
-            alpha1_1 = self.alpha_max * (action[0])
-            alpha2_1 = self.alpha_max * (action[1])
+        self.hamiltonian_update(num_time_bins, self.H_tot1_1, self.H1_1_array, self.detuning[0], self.detuning[1], alpha1_1, alpha2_1, 0, gamma_magnitude1_1,
+                                gamma_phase1_1, gamma_magnitude2_1, gamma_phase2_1)
+        self.hamiltonian_update(num_time_bins, self.H_tot1_2, self.H1_2_array, self.detuning[0], self.detuning[1], alpha1_2, alpha2_2, 0, gamma_magnitude1_2,
+                                gamma_phase1_2, gamma_magnitude2_2, gamma_phase2_2)
+        self.hamiltonian_update(num_time_bins, self.H_tot1_3, self.H1_3_array, self.detuning[0], self.detuning[1], alpha1_3, alpha2_3, 0, gamma_magnitude1_3,
+                                gamma_phase1_3, gamma_magnitude2_3, gamma_phase2_3)
+        self.hamiltonian_update(num_time_bins, self.H_tot1_4, self.H1_4_array, self.detuning[0], self.detuning[1], alpha1_4, alpha2_4, 0, gamma_magnitude1_4,
+                                gamma_phase1_4, gamma_magnitude2_4, gamma_phase2_4)
 
-            gamma_magnitude1_1 = self.gamma_magnitude_max * (action[2])
-            gamma_magnitude2_1 = self.gamma_magnitude_max * (action[3])
-
-            gamma_phase1_1 = self.gamma_phase_max * (action[4])
-            gamma_phase2_1 = self.gamma_phase_max * (action[5])
-
-            ### First two qubit gate
-
-        if self.current_Haar_num == 1:
-            g_eff1 = self.g_eff_max * (action[6] + self.initialActions[6])
-        else:
-            g_eff1 = self.g_eff_max * (action[6])
-
-        ### Second Single qubit gate
-        if self.current_Haar_num == 1:
-            alpha1_2 = self.alpha_max * (action[7] + self.initialActions[7])
-            alpha2_2 = self.alpha_max * (action[8] + self.initialActions[8])
-
-            gamma_magnitude1_2 = self.gamma_magnitude_max * (action[9] + self.initialActions[9])
-            gamma_magnitude2_2 = self.gamma_magnitude_max * (action[10] + self.initialActions[10])
-
-            gamma_phase1_2 = self.gamma_phase_max * (action[11] + self.initialActions[11])
-            gamma_phase2_2 = self.gamma_phase_max * (action[12] + self.initialActions[12])
-        elif self.current_Haar_num == 2:
-            alpha1_2 = - self.alpha_max * (action[7] + self.initialActions[7])
-            alpha2_2 = - self.alpha_max * (action[8] + self.initialActions[8])
-
-            gamma_magnitude1_2 = self.gamma_magnitude_max * (action[9] + self.initialActions[9])
-            gamma_magnitude2_2 = self.gamma_magnitude_max * (action[10] + self.initialActions[10])
-
-            gamma_phase1_2 = self.gamma_phase_max * (action[11] + self.initialActions[11])
-            gamma_phase2_2 = self.gamma_phase_max * (action[12] + self.initialActions[12])
-        else:
-            alpha1_2 = self.alpha_max * (action[7])
-            alpha2_2 = self.alpha_max * (action[8])
-
-            gamma_magnitude1_2 = self.gamma_magnitude_max * (action[9])
-            gamma_magnitude2_2 = self.gamma_magnitude_max * (action[10])
-
-            gamma_phase1_2 = self.gamma_phase_max * (action[11])
-            gamma_phase2_2 = self.gamma_phase_max * (action[12])
-
-        ### second two qubit gate
-        if self.current_Haar_num == 1:
-            g_eff2 = self.g_eff_max * (action[13] + self.initialActions[13])
-        else:
-            g_eff2 = self.g_eff_max * (action[13])
-
-        ### Third Single qubit gate
-        if self.current_Haar_num == 1:
-            alpha1_3 = self.alpha_max * (action[14] + self.initialActions[14])
-            alpha2_3 = self.alpha_max * (action[15] + self.initialActions[15])
-
-            gamma_magnitude1_3 = self.gamma_magnitude_max * (action[16] + self.initialActions[16])
-            gamma_magnitude2_3 = self.gamma_magnitude_max * (action[17] + self.initialActions[17])
-
-            gamma_phase1_3 = self.gamma_phase_max * (action[18] + self.initialActions[18])
-            gamma_phase2_3 = self.gamma_phase_max * (action[19] + self.initialActions[19])
-        elif self.current_Haar_num == 2:
-            alpha1_3 = - self.alpha_max * (action[14] + self.initialActions[14])
-            alpha2_3 = - self.alpha_max * (action[15] + self.initialActions[15])
-
-            gamma_magnitude1_3 = self.gamma_magnitude_max * (action[16] + self.initialActions[16])
-            gamma_magnitude2_3 = self.gamma_magnitude_max * (action[17] + self.initialActions[17])
-
-            gamma_phase1_3 = self.gamma_phase_max * (action[18] + self.initialActions[18])
-            gamma_phase2_3 = self.gamma_phase_max * (action[19] + self.initialActions[19])
-        else:
-            alpha1_3 = self.alpha_max * (action[14])
-            alpha2_3 = self.alpha_max * (action[15])
-
-            gamma_magnitude1_3 = self.gamma_magnitude_max * (action[16])
-            gamma_magnitude2_3 = self.gamma_magnitude_max * (action[17])
-
-            gamma_phase1_3 = self.gamma_phase_max * (action[18])
-            gamma_phase2_3 = self.gamma_phase_max * (action[19])
-
-        ### third two qubit gate
-        if self.current_Haar_num == 1:
-            g_eff3 = self.g_eff_max * (action[20] + self.initialActions[20])
-        else:
-            g_eff3 = self.g_eff_max * (action[20])
-
-        ### Fourth Single qubit gate
-        if self.current_Haar_num == 1:
-            alpha1_4 = self.alpha_max * (action[21] + self.initialActions[21])
-            alpha2_4 = self.alpha_max * (action[22] + self.initialActions[22])
-
-            gamma_magnitude1_4 = self.gamma_magnitude_max * (action[23] + self.initialActions[23])
-            gamma_magnitude2_4 = self.gamma_magnitude_max * (action[24] + self.initialActions[24])
-
-            gamma_phase1_4 = self.gamma_phase_max * (action[25] + self.initialActions[25])
-            gamma_phase2_4 = self.gamma_phase_max * (action[26] + self.initialActions[26])
-        elif self.current_Haar_num == 2:
-            alpha1_4 = - self.alpha_max * (action[21] + self.initialActions[21])
-            alpha2_4 = - self.alpha_max * (action[22] + self.initialActions[22])
-
-            gamma_magnitude1_4 = self.gamma_magnitude_max * (action[23] + self.initialActions[23])
-            gamma_magnitude2_4 = self.gamma_magnitude_max * (action[24] + self.initialActions[24])
-
-            gamma_phase1_4 = self.gamma_phase_max * (action[25] + self.initialActions[25])
-            gamma_phase2_4 = self.gamma_phase_max * (action[26] + self.initialActions[26])
-        else:
-            alpha1_4 = self.alpha_max * (action[21])
-            alpha2_4 = self.alpha_max * (action[22])
-
-            gamma_magnitude1_4 = self.gamma_magnitude_max * (action[23])
-            gamma_magnitude2_4 = self.gamma_magnitude_max * (action[24])
-
-            gamma_phase1_4 = self.gamma_phase_max * (action[25])
-            gamma_phase2_4 = self.gamma_phase_max * (action[26])
+        self.U = np.eye(16)  # identity
 
         # Set noise opertors
         jump_ops = []
         for ii in range(len(self.relaxation_ops)):
             jump_ops.append(np.sqrt(self.relaxation_rate[ii]) * self.relaxation_ops[ii])
 
-        # Hamiltonian with controls
-        H2_1 = self.hamiltonian(self.detuning[0], self.detuning[1], 0, 0, g_eff1, 0, 0, 0, 0, index=1)
-        H2_2 = self.hamiltonian(self.detuning[0], self.detuning[1], 0, 0, g_eff2, 0, 0, 0, 0, index=1)
-        H2_3 = self.hamiltonian(self.detuning[0], self.detuning[1], 0, 0, g_eff3, 0, 0, 0, 0, index=1)
+        H_tot_list = [self.H_tot1_1, self.H_tot2_1, self.H_tot1_2, self.H_tot2_2, self.H_tot1_3, self.H_tot2_3, self.H_tot1_4]
+        for H_tot in H_tot_list:
+            self.operator_update(H_tot, num_time_bins, jump_ops)
 
-        H1_1 = self.hamiltonian(self.detuning[0], self.detuning[1], alpha1_1, alpha2_1, 0, gamma_magnitude1_1,
-                                gamma_phase1_1, gamma_magnitude2_1, gamma_phase2_1)
-        H1_2 = self.hamiltonian(self.detuning[0], self.detuning[1], alpha1_2, alpha2_2, 0, gamma_magnitude1_2,
-                                gamma_phase1_2, gamma_magnitude2_2, gamma_phase2_2)
-        H1_3 = self.hamiltonian(self.detuning[0], self.detuning[1], alpha1_3, alpha2_3, 0, gamma_magnitude1_3,
-                                gamma_phase1_3, gamma_magnitude2_3, gamma_phase2_3)
-        H1_4 = self.hamiltonian(self.detuning[0], self.detuning[1], alpha1_4, alpha2_4, 0, gamma_magnitude1_4,
-                                gamma_phase1_4, gamma_magnitude2_4, gamma_phase2_4)
-
-        self.H2_1_array.append(H2_1)  # Array of Hs at each Haar wavelet
-        self.H2_2_array.append(H2_2)  # Array of Hs at each Haar wavelet
-        self.H2_3_array.append(H2_3)  # Array of Hs at each Haar wavelet
-
-        self.H1_1_array.append(H1_1)  # Array of Hs at each Haar wavelet
-        self.H1_2_array.append(H1_2)  # Array of Hs at each Haar wavelet
-        self.H1_3_array.append(H1_3)  # Array of Hs at each Haar wavelet
-        self.H1_4_array.append(H1_4)  # Array of Hs at each Haar wavelet
-
-        # H_tot for adding Hs at each time bins
-
-        # Create total Hamiltonian arrays using the helper
-        self.H_tot1_1 = self.update_total_H(self.H1_1_array, num_time_bins)
-        self.H_tot2_1 = self.update_total_H(self.H2_1_array, num_time_bins)
-        self.H_tot1_2 = self.update_total_H(self.H1_2_array, num_time_bins)
-        self.H_tot2_2 = self.update_total_H(self.H2_2_array, num_time_bins)
-        self.H_tot1_3 = self.update_total_H(self.H1_3_array, num_time_bins)
-        self.H_tot2_3 = self.update_total_H(self.H2_3_array, num_time_bins)
-        self.H_tot1_4 = self.update_total_H(self.H1_4_array, num_time_bins)
-
-
-        self.L = ([])  # at every step we calculate L again because minimal time bin changes
-        self.U = np.eye(16)  # identity
-        self.unitary_U = np.eye(4)
-
-        # Pre-calculate the common factor used for time steps
-        delta_t = self.final_time / num_time_bins
-
-        # Propagate for each H_tot array in sequence
-        for H_tot in [self.H_tot1_1, self.H_tot2_1, self.H_tot1_2, self.H_tot2_2, self.H_tot1_3, self.H_tot2_3,
-                      self.H_tot1_4]:
-            self.propagate(H_tot, jump_ops, delta_t,num_time_bins)
 
         # Reward and fidelity calculation
         fidelity = self.compute_fidelity()
+        reward = self.compute_reward(fidelity)
         self.prev_fidelity = fidelity
-
-        reward = (-3 * np.log10(1.0000001 - fidelity) + np.log10(1.0000001 - self.prev_fidelity)) + (
-                    3 * fidelity - self.prev_fidelity)
 
         self.state = self.get_observation()
 
         if self.current_Haar_num == self.num_Haar_basis:
             self.transition_history.append([fidelity, reward, *action, *self.U.flatten()])
 
-        # Determine if episode is over
+        truncated, terminated = self.is_episode_over(fidelity)
 
-        # Determine if episode is over
-        truncated = (fidelity >= 1)
-        terminated = (self.current_Haar_num >= self.num_Haar_basis) and (self.current_step_per_Haar >= self.steps_per_Haar)
-
-        if self.current_step_per_Haar == self.steps_per_Haar:  # For each Haar basis, if all trial steps ends, them move to next haar wavelet
-            self.current_Haar_num += 1
-            self.current_step_per_Haar = 1
-        else:
-            self.current_step_per_Haar += 1
+        self.Haar_update()
 
         info = {}
         return (self.state, reward, terminated, truncated, info)
@@ -506,10 +462,7 @@ class NoisyTwoQubitEnv(gym.Env):
             assert np.isclose(np.linalg.det(U), 1), "Determinant of U is not 1"
 
             # 1. Unconjugate U into the magic basis
-            B = 1 / np.sqrt(2) * np.array([[1., 0, 0, 1.j], [0, 1.j, 1., 0],
-                                           [0, 1.j, -1., 0], [1., 0, 0, -1.j]])  # Magic Basis
-
-            U_prime = np.conj(B).T @ U @ B
+            U_prime = B_dagger @ U @ B
 
             # Isolating the maximal torus
             Theta = lambda U: np.conj(U)
@@ -549,17 +502,16 @@ class NoisyTwoQubitEnv(gym.Env):
             assert np.isclose(np.linalg.det(K1), 1), "Determinant of K1 is not 1"
 
             # 6. Extracting Local Gates
-            L = B @ K1 @ np.conj(B).T  # Left Local Product
-            R = B @ K2 @ np.conj(B).T  # Right Local Product
+            L = B @ K1 @ B_dagger  # Left Local Product
+            R = B @ K2 @ B_dagger  # Right Local Product
 
             phase1, L1, L2 = decompose_one_qubit_product(L)  # L1 (top), L2(bottom)
             phase2, R1, R2 = decompose_one_qubit_product(R)  # R1 (top), R2(bottom)
 
             # 7. Extracting the Canonical Parameters
-            C = np.array([[1, 1, 1], [-1, 1, -1], [1, -1, -1]])  # Coefficient Matrix
 
             theta_vec = np.angle(np.diag(A))[:3]  # theta vector
-            a0, a1, a2 = np.linalg.inv(C) @ theta_vec  # Computing the "a"-vector
+            a0, a1, a2 = C_MATRIX_INV @ theta_vec  # Computing the "a"-vector
 
             # 8. Unpack Parameters and Put into Weyl chamber
             c0, c1, c2 = 2 * a1, -2 * a0, 2 * a2  # Unpack parameters
@@ -597,21 +549,23 @@ class NoisyTwoQubitEnv(gym.Env):
 
         initialActions[13] = self.canonicalActionCalculation(c0, c1, c2, 2)
 
-        initialActions[14] = self.singleQubitActionCalculation(H @ S @ H)[0]
-        initialActions[15] = self.singleQubitActionCalculation(H @ S @ H)[0]
-        initialActions[16] = self.singleQubitActionCalculation(H @ S @ H)[1]
-        initialActions[17] = self.singleQubitActionCalculation(H @ S @ H)[1]
-        initialActions[18] = self.singleQubitActionCalculation(H @ S @ H)[2]
-        initialActions[19] = self.singleQubitActionCalculation(H @ S @ H)[2]
+        initialActions[14] = self.singleQubitActionCalculation(HSH)[0]
+        initialActions[15] = self.singleQubitActionCalculation(HSH)[0]
+        initialActions[16] = self.singleQubitActionCalculation(HSH)[1]
+        initialActions[17] = self.singleQubitActionCalculation(HSH)[1]
+        initialActions[18] = self.singleQubitActionCalculation(HSH)[2]
+        initialActions[19] = self.singleQubitActionCalculation(HSH)[2]
 
         initialActions[20] = self.canonicalActionCalculation(c0, c1, c2, 3)
 
-        initialActions[21] = self.singleQubitActionCalculation(L1 @ Sdagger @ H)[0]
-        initialActions[22] = self.singleQubitActionCalculation(L2 @ Sdagger @ H)[0]
-        initialActions[23] = self.singleQubitActionCalculation(L1 @ Sdagger @ H)[1]
-        initialActions[24] = self.singleQubitActionCalculation(L2 @ Sdagger @ H)[1]
-        initialActions[25] = self.singleQubitActionCalculation(L1 @ Sdagger @ H)[2]
-        initialActions[26] = self.singleQubitActionCalculation(L2 @ Sdagger @ H)[2]
+        L1SdaggerH = L1 @ SdaggerH
+        L2SdaggerH = L2 @ SdaggerH
+        initialActions[21] = self.singleQubitActionCalculation(L1SdaggerH)[0]
+        initialActions[22] = self.singleQubitActionCalculation(L2SdaggerH)[0]
+        initialActions[23] = self.singleQubitActionCalculation(L1SdaggerH)[1]
+        initialActions[24] = self.singleQubitActionCalculation(L2SdaggerH)[1]
+        initialActions[25] = self.singleQubitActionCalculation(L1SdaggerH)[2]
+        initialActions[26] = self.singleQubitActionCalculation(L2SdaggerH)[2]
 
         return initialActions
 
@@ -643,7 +597,7 @@ class NoisyTwoQubitEnv(gym.Env):
 
     def canonicalActionCalculation(self, c0, c1, c2, index=1):
 
-        twoQubitAction = 0
+        # twoQubitAction = 0
 
         if index == 1:
             b = 1 / 2 * (c0 + c1 - c2)
