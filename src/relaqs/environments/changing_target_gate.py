@@ -61,7 +61,7 @@ class NoisyChangingTargetEnv(ChangingTargetEnv, NoisySingleQubitEnv):
     @classmethod
     def get_default_env_config(cls):
         config_dict = super().get_default_env_config()
-        config_dict["observation_space_size"] = 35
+        config_dict["observation_space_size"] = 36
         return config_dict
 
     def __init__(self, env_config):
@@ -85,13 +85,13 @@ class NoisyChangingTargetEnv(ChangingTargetEnv, NoisySingleQubitEnv):
         normalized_relaxation_rates = [normalize(self.relaxation_rate[0], self.relaxation_rates_list[0]),
                                        normalize(self.relaxation_rate[1],
                                                  self.relaxation_rates_list[1])]  # could do list comprehension
-        return np.append(normalized_relaxation_rates + normalized_detuning, U_diff)
+        return np.append([self.step_index] + normalized_relaxation_rates + normalized_detuning, U_diff)
 
     def return_env_config(self):
         env_config = super().return_env_config()
         env_config.update({"detuning_list": self.detuning_list,  # qubit detuning
                            "relaxation_rates_list": self.relaxation_rates_list,
                            "relaxation_ops": self.relaxation_ops,
-                           "observation_space_size": 35,
+                           "observation_space_size": 36,
                            })
         return env_config
