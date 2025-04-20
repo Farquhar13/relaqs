@@ -38,6 +38,7 @@ class NoisySingleQubitEnv(SingleQubitEnv):
         self.relaxation_rate = self.get_relaxation_rate()
         self.U = self.U_initial.copy()  # multiplied propagtion operators
         self.state = self.unitary_to_observation(self.U_initial)  # starting observation space
+        self.step_index = 0
 
     def detuning_update(self):
         # Random detuning selection
@@ -78,6 +79,7 @@ class NoisySingleQubitEnv(SingleQubitEnv):
         self.detuning_update()
         starting_observeration = self.get_observation()
         info = {}
+        self.step_index = 0
         return starting_observeration, info
 
     def operator_update(self, num_time_bins):
@@ -125,4 +127,5 @@ class NoisySingleQubitEnv(SingleQubitEnv):
         self.Haar_update()
 
         info = {}
+        self.step_index += 1
         return (self.state, reward, terminated, truncated, info)
