@@ -90,7 +90,7 @@ def run(env=ChangingTargetEnv, n_training_episodes=1, u_target_list = [gates.Ran
     if plot is True:
         assert save is True, "If plot=True, then save must also be set to True"
         env_string = f"[Noise Factor: {noise_factor}] Noisy " if isinstance(env, NoisyChangingTargetEnv) else "Noiseless"
-        training_figure_title = " ".join(f"{target_gate}-" for target_gate in env_config["U_target_list"])
+        training_figure_title = " ".join(f"{target_gate}-" for target_gate in env_config["U_target_list"]) + "step index in obs-"
         plot_data(save_dir = save_dir, figure_title=env_string + training_figure_title, plot_filename='Training')
         print("Plots Created")
     # --------------------------------------------------------------
@@ -169,26 +169,26 @@ def main():
     save = True
     plot = True
 
-    n_training_episodes = 200
-    n_episodes_for_inferencing = 10_000
+    n_training_episodes = 50
+    n_episodes_for_inferencing = 1
     noise_factor = 1
 
     u_target_list = [gates.RandomSU2()]
 
     alg, training_time, save_dir = run(env, n_training_episodes, u_target_list, save, plot, noise_factor = noise_factor)
 
-    inferencing_gate = [gates.RandomSU2(), gates.Rx(), gates.Ry(), gates.Rz(),
-                        gates.X(), gates.Y(), gates.Z(), gates.H(), gates.S(),
-                        gates.XY_combination(),gates.ZX_combination(),gates.HS()]
-    print(f'\nStarting inferencing\n')
-    inference_start = get_time()
-    inference_and_save(inference_list=inferencing_gate, save_dir=save_dir, train_alg=alg,
-                       n_episodes_for_inferencing=n_episodes_for_inferencing)
-    inference_end = get_time()
-    inference_elapsed_time = inference_end - inference_start
+    # inferencing_gate = [gates.RandomSU2(), gates.Rx(), gates.Ry(), gates.Rz(),
+    #                     gates.X(), gates.Y(), gates.Z(), gates.H(), gates.S(),
+    #                     gates.XY_combination(),gates.ZX_combination(),gates.HS()]
+    # print(f'\nStarting inferencing\n')
+    # inference_start = get_time()
+    # inference_and_save(inference_list=inferencing_gate, save_dir=save_dir, train_alg=alg,
+    #                    n_episodes_for_inferencing=n_episodes_for_inferencing)
+    # inference_end = get_time()
+    # inference_elapsed_time = inference_end - inference_start
 
     print(f"Training Time: {training_time}")
-    print(f"Inference Time + Saving Inference + Inference Visuals: {inference_elapsed_time}")
+    #print(f"Inference Time + Saving Inference + Inference Visuals: {inference_elapsed_time}")
     print(f'Results saved to: {save_dir}')
 
 if __name__ == "__main__":
