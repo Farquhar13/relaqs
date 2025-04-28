@@ -1,66 +1,59 @@
-# import sys
-# sys.path.append('./src/')
-
 import ray
-# from ray.rllib.algorithms.ddpg import DDPGConfig
-# from ray.tune.registry import register_env
 from relaqs.environments.noisy_two_qubit_env import NoisyTwoQubitEnv
-from relaqs.environments.scratch_noisy_two_qubit import ScratchNoisyTwoQubitEnv
-from relaqs.environments.experimental_2qubit_2 import ExpNoisyTwoQubitEnv
+from relaqs.environments.two_qubit_changing_gate import TwoQubitChangingEnv
 from relaqs.save_results import SaveResults
 from relaqs.plot_data import plot_data
 import logging
 import warnings
-
-from relaqs.quantum_noise_data.get_data import get_month_of_single_qubit_data, get_month_of_all_qubit_data
-from relaqs import quantum_noise_data
-from relaqs import QUANTUM_NOISE_DATA_DIR
-from relaqs import RESULTS_DIR
-
 from qutip.operators import *
 from qutip.qip.operations import cnot
 from relaqs.api.utils import *
-
-import numpy as np
-np.seterr(divide='ignore', invalid='ignore')
+from relaqs.api import gates
 import datetime
+import numpy as np
+import warnings
+import logging
 
+np.seterr(divide='ignore', invalid='ignore')
 logging.getLogger("ray").setLevel(logging.ERROR)
 logging.getLogger("ray.rllib").setLevel(logging.ERROR)
 logging.getLogger("gym").setLevel(logging.ERROR)
 warnings.filterwarnings("ignore", message=".*Box bound precision lowered by casting.*")
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
-def run(env = NoisyTwoQubitEnv,n_training_episodes=1, save=True, plot=True):
-    ray.init(num_cpus=14)
+
+def run(env=TwoQubitChangingEnv, n_training_episodes=1, u_target_list = [gates.RandomSUN()], u_initial_list = [gates.RandomSUN()], save=True, plot=True):
+    ray.init()
 
     # ---------------------> Configure algorithm and Environment <-------------------------
     alg_config = DDPGConfig()
     alg_config.framework("torch")
-        
+
     env_config = env.get_default_env_config()
-    CNOT = cnot().data.toarray()
-    env_config["U_target"] = CNOT
-    env_config["num_Haar_basis"] = 2
-    env_config['verbose'] = False
-    # env_config["steps_per_Haar"] = 2
+
+    env_config["num_Haar_basis"] = 3
+    env_config["steps_per_Haar"] = 1
+
+    env_config["U_target_list"] = u_target_list
+    env_config["U_initial_list"] = u_initial_list
+
+    # env_config['verbose'] = False
 
     alg_config.environment(env, env_config=env_config)
-    
-    alg_config.rollouts(batch_mode="complete_episodes")
 
+    alg_config.rollouts(batch_mode="complete_episodes")
     # ---------------------------------Alg Configs---------------------------------
     # alg_config.actor_lr = 4e-5
     # alg_config.critic_lr = 5e-4
 
-    # alg_config.actor_lr = 1e-5
-    # alg_config.critic_lr = 2e-4
+    alg_config.actor_lr = 1e-5
+    alg_config.critic_lr = 2e-4
     # alg_config.actor_hiddens = [1200] * 14
     # alg_config.critic_hiddens = [800] * 10
+    alg_config.actor_hiddens = [500] * 6
+    alg_config.critic_hiddens = [300] * 4
 
-    alg_config.train_batch_size = 1
-    alg_config.actor_hiddens = [1] * 1
-    alg_config.critic_hiddens = [1] * 1
+    alg_config.train_batch_size = 512
 
     alg_config.actor_hidden_activation = "relu"
     alg_config.critic_hidden_activation = "relu"
@@ -77,7 +70,8 @@ def run(env = NoisyTwoQubitEnv,n_training_episodes=1, save=True, plot=True):
     # ---------------------> Train Agent <-------------------------
     for i in range(n_training_episodes):
         alg.train()
-        print(f'--------------------------Iterations completed: {i+1}/{n_training_episodes}--------------------------')
+        print(
+            f'--------------------------Iterations completed: {i + 1}/{n_training_episodes}--------------------------')
 
     training_end_time = get_time()
     training_elapsed_time = training_end_time - training_start_time
@@ -86,28 +80,36 @@ def run(env = NoisyTwoQubitEnv,n_training_episodes=1, save=True, plot=True):
     # ---------------------> Save Results <-------------------------
     if save is True:
         env = alg.workers.local_worker().env
-        sr = SaveResults(env, alg, save_path = RESULTS_DIR + "two-qubit gates/"+"CNOT_baseline_2_" + datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S/"))
+        sr = SaveResults(env, alg,
+                         save_path=RESULTS_DIR + "two-qubit gates/" + datetime.datetime.now().strftime(
+                             "%Y-%m-%d_%H-%M-%S/"))
         save_dir = sr.save_results()
         print("Results saved to:", save_dir)
-        # --------------------------------------------------------------
+    # --------------------------------------------------------------
 
     # ---------------------> Plot Data <-------------------------
     if plot is True:
         assert save is True, "If plot=True, then save must also be set to True"
-        plot_data(save_dir)
+        env_string = f"[Noisy 2 Qubit] "
+        initial_gate_title = " ".join(f"{target_gate}-" for target_gate in env_config["U_initial_list"])
+        target_gate_title = " ".join(f"{target_gate}-" for target_gate in env_config["U_target_list"])
+        plot_data(save_dir = save_dir, figure_title=env_string + "Initial Gates: "+ initial_gate_title + f"Target Gates: " + target_gate_title, plot_filename='Training')
         print("Plots Created")
-        # --------------------------------------------------------------
+    # --------------------------------------------------------------
 
 
 def main():
-    # env = NoisyTwoQubitEnv
-    # env = ScratchNoisyTwoQubitEnv
-    env = ExpNoisyTwoQubitEnv
-    n_training_episodes = 10
+    env = TwoQubitChangingEnv
+    n_training_episodes = 40
+
+    u_initial_list = [gates.I(4)]
+    u_target_list = [gates.RandomSUN()]
+
     # n_training_episodes = 1
     save = True
     plot = True
-    run(env, n_training_episodes, save, plot)
+    run(env, n_training_episodes=n_training_episodes, u_target_list = u_target_list, u_initial_list=u_initial_list,save=save, plot=plot)
+
 
 if __name__ == "__main__":
     main()

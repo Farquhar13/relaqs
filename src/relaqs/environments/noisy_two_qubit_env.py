@@ -569,6 +569,8 @@ class NoisyTwoQubitEnv(gym.Env):
             self.current_step_per_Haar += 1
 
         info = {}
+        if (terminated or truncated) and self.verbose:
+            print(f"F: {fidelity:7.3f}\nR: {reward:7.3f}\n")
         return (self.state, reward, terminated, truncated, info)
     
     def canonicalDecomposition(self):

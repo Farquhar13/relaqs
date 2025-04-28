@@ -1,6 +1,9 @@
 import numpy as np
 from abc import ABC, abstractmethod
 from scipy.stats import rv_continuous
+from numpy.linalg import qr, det
+from qutip import Qobj, tensor
+from qutip.qip.operations import cnot, cphase
 
 class sin_prob_dist(rv_continuous):
     def _pdf(self, theta):
@@ -20,11 +23,14 @@ class Gate(ABC):
         pass
 
 class I(Gate):
+    def __init__(self, N=2):
+        super().__init__()
+        self.N = N
     def __str__(self):
-        return "I"
+        return f"I({self.N})"
     
     def get_matrix(self):
-        return np.eye(2)
+        return np.eye(self.N)
 
 class X(Gate):
     def __str__(self):
@@ -171,3 +177,48 @@ class RandomSU2(Gate):
         U[1][1] = np.exp(1j * (phi + omega) / 2) * np.cos(theta / 2)
 
         return U
+
+class RandomSUN(Gate):
+    def __init__(self, N = 4):
+        super().__init__()
+        self.N = N
+
+    def __str__(self):
+        return f"RandomSU({self.N})"
+
+    def get_matrix(self):
+        """
+        Generate a Haar-random matrix using the QR decomposition.
+        https://pennylane.ai/qml/demos/tutorial_haar_measure
+        """
+        # Step 1
+        A = np.random.normal(size=(self.N, self.N))
+        B = np.random.normal(size=(self.N, self.N))
+        Z = A + 1j * B
+
+        # Step 2
+        Q, R = qr(Z)
+
+        # Step 3
+        Lambda = np.diag([R[i, i] / np.abs(R[i, i]) for i in range(self.N)])
+
+        # Step 4
+        Q = np.dot(Q, Lambda)
+
+        # Step 5. Normalize determinant to 1 for SU(N)
+        Q /= det(Q) ** (1 / self.N)
+
+        return Q
+
+class II(Gate):
+    def __str__(self):
+        return f"II"
+
+    def get_matrix(self):
+        return np.eye(4)
+
+class Cnot(Gate):
+    def __str__(self):
+        return f"CNOT"
+    def get_matrix(self):
+        return cnot().data.toarray()

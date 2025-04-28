@@ -69,7 +69,7 @@ B = 1 / np.sqrt(2) * np.array([[1., 0, 0, 1.j], [0, 1.j, 1., 0],
 B_dagger = np.conj(B).T
 
 
-class ExpNoisyTwoQubitEnv(gym.Env):
+class RandomNoisyTwoQubitEnv(gym.Env):
     @classmethod
     def get_default_env_config(cls):
         return {
@@ -81,7 +81,6 @@ class ExpNoisyTwoQubitEnv(gym.Env):
             "num_Haar_basis": 3,  # number of Haar basis (need to update for odd combinations)
             "steps_per_Haar": 1,  # steps per Haar basis per episode
             "detuning_list": np.random.normal(0, np.pi / 100 / 30E-9, size=(2, 100)).tolist(),  # qubit detuning
-            "save_data_every_step": 1,
             "verbose": True,
             # "relaxation_rates_list": [[1/60E-6/2/np.pi],[1/30E-6/2/np.pi],[1/66E-6/2/np.pi],[1/5E-6/2/np.pi]], # relaxation lists of list of floats to be sampled from when resetting environment.
             "relaxation_rates_list": [[0], [0], [0], [0]],  # for now
@@ -98,6 +97,42 @@ class ExpNoisyTwoQubitEnv(gym.Env):
     # 30 ns duration, g1 = 72.5 MHz, g2 = 71.5 MHz, g12 = 5 MHz
     # T1 = 60 us, 30 us
     # T2* = 66 us, 5 us
+
+    def __init__(self, env_config):
+        self.final_time = env_config["final_time"]  # Final time for the gates
+        self.PiFreq = np.pi / self.final_time
+        self.observation_space = gym.spaces.Box(low=0, high=1, shape=(
+        env_config["observation_space_size"],))  # propagation operator elements + fidelity + relaxation + detuning
+        self.action_space = gym.spaces.Box(low=-0.1 * np.ones(27), high=0.1 * np.ones(
+            27))  # alpha1, alpha2, alphaC, gamma_magnitude1, gamma_phase1, gamma_magnitude2, gamma_phase2
+        self.detuning_list = env_config["detuning_list"]
+        self.detuning_update()
+        self.U_target = self.unitary_to_superoperator(env_config["U_target"])
+        self.U_target_dm = env_config["U_target"]
+        self.U_initial = self.unitary_to_superoperator(env_config["U_initial"])
+        self.U_initial_dm = env_config["U_initial"]
+        self.num_Haar_basis = env_config["num_Haar_basis"]
+        self.steps_per_Haar = env_config["steps_per_Haar"]
+        self.verbose = env_config["verbose"]
+        self.relaxation_rates_list = env_config["relaxation_rates_list"]
+        self.relaxation_ops = env_config["relaxation_ops"]
+        self.relaxation_rate = self.get_relaxation_rate()
+        self.current_Haar_num = 1  # starting with 1
+        self.current_step_per_Haar = 1
+        self.H_array = []  # saving all H's with Haar wavelet to be multiplied
+        self.H_tot = []  # Haar wavelet multipied H summed up for each time bin
+        self.L_array = []  # Liouvillian for each time bin
+        self.U_array = []  # propagation operators for each time bin
+        self.U = self.U_initial.copy()  # multiplied propagtion operators
+        self.state = self.unitary_to_observation(self.U_initial)  # starting observation space
+        self.prev_fidelity = 0  # previous step' fidelity for rewarding
+        self.alpha_max = self.PiFreq / 2
+        self.g_eff_max = self.PiFreq / 2
+        self.gamma_phase_max = np.pi
+        self.gamma_magnitude_max = self.PiFreq / 2
+        self.transition_history = []
+        self.env_config = env_config
+        self.initialActions = self.KakActionCalculation()
 
     def hamiltonian(self, detuning1, detuning2, alpha1, alpha2, g_eff, gamma_magnitude1, gamma_phase1, gamma_magnitude2,
                     gamma_phase2, index=1):
@@ -119,53 +154,11 @@ class ExpNoisyTwoQubitEnv(gym.Env):
 
         return energyTotal
 
-    def __init__(self, env_config):
-        self.final_time = env_config["final_time"]  # Final time for the gates
-        self.PiFreq = np.pi / self.final_time
-        self.observation_space = gym.spaces.Box(low=0, high=1, shape=(
-        env_config["observation_space_size"],))  # propagation operator elements + fidelity + relaxation + detuning
-        self.action_space = gym.spaces.Box(low=-0.1 * np.ones(27), high=0.1 * np.ones(
-            27))  # alpha1, alpha2, alphaC, gamma_magnitude1, gamma_phase1, gamma_magnitude2, gamma_phase2
-        self.detuning_list = env_config["detuning_list"]
-        self.detuning_update()
-        self._U_target = self.unitary_to_superoperator(env_config["U_target"])
-        self.unitary_U_target = env_config["U_target"]
-        self.U_initial = self.unitary_to_superoperator(env_config["U_initial"])
-        self.num_Haar_basis = env_config["num_Haar_basis"]
-        self.steps_per_Haar = env_config["steps_per_Haar"]
-        self.verbose = env_config["verbose"]
-        self.relaxation_rates_list = env_config["relaxation_rates_list"]
-        self.relaxation_ops = env_config["relaxation_ops"]
-        self.relaxation_rate = self.get_relaxation_rate()
-        self.current_Haar_num = 1  # starting with 1
-        self.current_step_per_Haar = 1
-        self.H_array = []  # saving all H's with Haar wavelet to be multiplied
-        self.H_tot = []  # Haar wavelet multipied H summed up for each time bin
-        self.L_array = []  # Liouvillian for each time bin
-        self.U_array = []  # propagation operators for each time bin
-        self.U = self.U_initial.copy()  # multiplied propagtion operators
-        self.state = self.unitary_to_observation(self.U_initial)  # starting observation space
-        # self.state = self.unitary_to_observation(self.unitary_U_target)  # starting observation space
-        self.prev_fidelity = 0  # previous step' fidelity for rewarding
-        self.alpha_max = self.PiFreq / 2
-        self.g_eff_max = self.PiFreq / 2
-        self.gamma_phase_max = np.pi
-        self.gamma_magnitude_max = self.PiFreq / 2
-        self.transition_history = []
-        self.env_config = env_config
-        self.initialActions = self.KakActionCalculation()
-        self.episode_id = 0
-
     def detuning_update(self):
         qubit_1_detuning = random.sample(self.detuning_list[0], k=1)[0]
         qubit_2_detuning = random.sample(self.detuning_list[1], k=1)[0]
 
         self.detuning = [qubit_1_detuning, qubit_2_detuning]
-
-    def update_target_unitary(self, U):
-        self._U_target = self.unitary_to_superoperator(U)
-        self.unitary_U_target = U
-        self.initialActions = self.KakActionCalculation()
 
     def unitary_to_superoperator(self, U):
         return (spre(Qobj(U)) * spost(Qobj(U.conjugate().transpose()))).data.toarray()
@@ -189,18 +182,16 @@ class ExpNoisyTwoQubitEnv(gym.Env):
         # return np.append([self.compute_fidelity()] +
         #                   normalized_relaxation_rates +
         #                   normalized_detuning,
-        #                   self.unitary_to_observation(self.unitary_U_target))
-        # U_diff = self._U_target @ self.U_initial.conj().T
+        #                   self.unitary_to_observation(self.U_target_dm))
+        # U_diff = self.U_target @ self.U_initial.conj().T
         # return np.append(normalized_detuning,
-        #                 self.unitary_to_observation(self._U_target))
+        #                 self.unitary_to_observation(self.U_target))
         return np.append(normalized_detuning,
-                         self.unitary_to_observation(self.unitary_U_target))
+                         self.unitary_to_observation(self.U_target_dm))
 
     def compute_fidelity(self):
-        # U_target_dagger = self.unitary_to_superoperator(self.unitary_U_target.conjugate().transpose())
-        # self._U_target.conjugate().transpose()
-        return float(np.abs(np.trace(self._U_target.conjugate().transpose() @ self.U))) / (self.U.shape[0])
-        # return F
+        return float(np.abs(np.trace(self.U_target.conjugate().transpose() @ self.U))) / (self.U.shape[0])
+
 
     def unitary_to_observation(self, U):
         return (
@@ -212,9 +203,29 @@ class ExpNoisyTwoQubitEnv(gym.Env):
             .reshape(-1)  # cmath phase gives -2pi to 2pi (?)
         )
 
+    def is_episode_over(self, fidelity):
+        truncated = False
+        terminated = False
+        if fidelity >= 1:
+            truncated = True  # truncated when target fidelity reached
+        elif (self.current_Haar_num >= self.num_Haar_basis) and (self.current_step_per_Haar >= self.steps_per_Haar):  # terminate when all Haar is tested
+            terminated = True
+        return truncated, terminated
+
+    def compute_reward(self, fidelity):
+        return (-3 * np.log10(1.0 - fidelity) + np.log10(1.0 - self.prev_fidelity)) + (
+                    3 * fidelity - self.prev_fidelity)
+
+    def Haar_update(self):
+        if (self.current_step_per_Haar == self.steps_per_Haar):  # For each Haar basis, if all trial steps ends, them move to next haar wavelet
+            self.current_Haar_num += 1
+            self.current_step_per_Haar = 1
+        else:
+            self.current_step_per_Haar += 1
+
     def reset(self, *, seed=None, options=None):
         self.initialActions = self.KakActionCalculation()
-        # self.U = self.U_initial.copy()
+        self.U = self.U_initial.copy()
         self.state = self.get_observation()
         self.current_Haar_num = 1
         self.current_step_per_Haar = 1
@@ -240,7 +251,6 @@ class ExpNoisyTwoQubitEnv(gym.Env):
         self.relaxation_rate = self.get_relaxation_rate()
         self.detuning = 0
         self.detuning_update()
-        self.episode_id += 1
         starting_observeration = self.get_observation()
         info = {}
         return starting_observeration, info
@@ -248,7 +258,7 @@ class ExpNoisyTwoQubitEnv(gym.Env):
     def step(self, action):
         num_time_bins = 2 ** (self.current_Haar_num - 1)
         self.initialActions = self.KakActionCalculation()
-        action = [0] * 27
+
         ### First single qubit gate
 
         if self.current_Haar_num == 1:
@@ -493,111 +503,69 @@ class ExpNoisyTwoQubitEnv(gym.Env):
                 else:  # Because H_tot[jj] does not exist
                     self.H_tot1_4.append(factor * H_elem)
 
-        # self.L = ([])  # at every step we calculate L again because minimal time bin changes
-        self.U = np.eye(16)  # identity
-        # self.U = self.U_initial.copy()
-        # self.unitary_U = np.eye(4)
+        self.U = self.U_initial.copy()
 
         for jj in range(0, num_time_bins):
             L = (liouvillian(Qobj(self.H_tot1_1[jj]), jump_ops, data_only=False,
                              chi=None)).data.toarray()  # Liouvillian calc
-            # self.L_array.append(L)
             Ut = la.expm(self.final_time / num_time_bins * L)  # time evolution (propagation operator)
-            # unitary_Ut = la.expm(-1j * self.H_tot1_1[jj] * self.final_time / num_time_bins)
             self.U = Ut @ self.U  # calculate total propagation until the time we are at
-            # self.unitary_U = unitary_Ut @ self.unitary_U
 
         for jj in range(0, num_time_bins):
             L = (liouvillian(Qobj(self.H_tot2_1[jj]), jump_ops, data_only=False,
                              chi=None)).data.toarray()  # Liouvillian calc
-            # self.L_array.append(L)
             Ut = la.expm(self.final_time / num_time_bins * L)  # time evolution (propagation operator)
-            # unitary_Ut = la.expm(-1j * self.H_tot2_1[jj] * self.final_time / num_time_bins)
             self.U = Ut @ self.U  # calculate total propagation until the time we are at
-            # self.unitary_U = unitary_Ut @ self.unitary_U
 
         for jj in range(0, num_time_bins):
             L = (liouvillian(Qobj(self.H_tot1_2[jj]), jump_ops, data_only=False,
                              chi=None)).data.toarray()  # Liouvillian calc
-            # self.L_array.append(L)
             Ut = la.expm(self.final_time / num_time_bins * L)  # time evolution (propagation operator)
-            # unitary_Ut = la.expm(-1j * self.H_tot1_2[jj] * self.final_time / num_time_bins)
             self.U = Ut @ self.U  # calculate total propagation until the time we are at
-            # self.unitary_U = unitary_Ut @ self.unitary_U
 
         for jj in range(0, num_time_bins):
             L = (liouvillian(Qobj(self.H_tot2_2[jj]), jump_ops, data_only=False,
                              chi=None)).data.toarray()  # Liouvillian calc
-            # self.L_array.append(L)
             Ut = la.expm(self.final_time / num_time_bins * L)  # time evolution (propagation operator)
-            # unitary_Ut = la.expm(-1j * self.H_tot2_2[jj] * self.final_time / num_time_bins)
             self.U = Ut @ self.U  # calculate total propagation until the time we are at
-            # self.unitary_U = unitary_Ut @ self.unitary_U
 
         for jj in range(0, num_time_bins):
             L = (liouvillian(Qobj(self.H_tot1_3[jj]), jump_ops, data_only=False,
                              chi=None)).data.toarray()  # Liouvillian calc
-            # self.L_array.append(L)
             Ut = la.expm(self.final_time / num_time_bins * L)  # time evolution (propagation operator)
-            # unitary_Ut = la.expm(-1j * self.H_tot1_3[jj] * self.final_time / num_time_bins)
             self.U = Ut @ self.U  # calculate total propagation until the time we are at
-            # self.unitary_U = unitary_Ut @ self.unitary_U
 
         for jj in range(0, num_time_bins):
             L = (liouvillian(Qobj(self.H_tot2_3[jj]), jump_ops, data_only=False,
                              chi=None)).data.toarray()  # Liouvillian calc
-            # self.L_array.append(L)
             Ut = la.expm(self.final_time / num_time_bins * L)  # time evolution (propagation operator)
-            # unitary_Ut = la.expm(-1j * self.H_tot2_3[jj] * self.final_time / num_time_bins)
             self.U = Ut @ self.U  # calculate total propagation until the time we are at
-            # self.unitary_U = unitary_Ut @ self.unitary_U
 
         for jj in range(0, num_time_bins):
             L = (liouvillian(Qobj(self.H_tot1_4[jj]), jump_ops, data_only=False,
                              chi=None)).data.toarray()  # Liouvillian calc
-            # self.L_array.append(L)
             Ut = la.expm(self.final_time / num_time_bins * L)  # time evolution (propagation operator)
-            # unitary_Ut = la.expm(-1j * self.H_tot1_4[jj] * self.final_time / num_time_bins)
             self.U = Ut @ self.U  # calculate total propagation until the time we are at
-            # self.unitary_U = unitary_Ut @ self.unitary_U
 
-        # Reward and fidelity calculation
+
+        # return (self.state, reward, terminated, truncated, info)
         fidelity = self.compute_fidelity()
-        # if fidelity>0.49:
-        # plot_complex_matrix(self.U, action, fidelity, "Matrix U")
-
-        reward = (-3 * np.log10(1.0000001 - fidelity) + np.log10(1.0000001 - self.prev_fidelity)) + (
-                    3 * fidelity - self.prev_fidelity)
-        # reward = (-7 * np.log10(1.0000001 - fidelity) + np.log10(1.0000001 - self.prev_fidelity)) + (3 * fidelity - self.prev_fidelity)
-        # reward = (-1 * np.log10(1.0000001 - fidelity) + np.log10(1.0000001 - self.prev_fidelity)) + (3 * fidelity - self.prev_fidelity)
+        reward = self.compute_reward(fidelity)
         self.prev_fidelity = fidelity
 
         self.state = self.get_observation()
 
         if self.current_Haar_num == self.num_Haar_basis:
-            self.transition_history.append([fidelity, reward, *action, *self.U.flatten(), self.episode_id])
+            self.transition_history.append([fidelity, reward, *action, *self.U.flatten()])
 
-        # Determine if episode is over
-        truncated = False
-        terminated = False
-        if fidelity >= 1:
-            truncated = True  # truncated when target fidelity reached
-        elif (self.current_Haar_num >= self.num_Haar_basis) and (
-                self.current_step_per_Haar >= self.steps_per_Haar):  # terminate when all Haar is tested
-            terminated = True
-        else:
-            terminated = False
+        truncated, terminated = self.is_episode_over(fidelity)
 
-        if (
-                self.current_step_per_Haar == self.steps_per_Haar):  # For each Haar basis, if all trial steps ends, them move to next haar wavelet
-            self.current_Haar_num += 1
-            self.current_step_per_Haar = 1
-        else:
-            self.current_step_per_Haar += 1
-
-        info = {}
         if (terminated or truncated) and self.verbose:
             print(f"F: {fidelity:7.3f}\nR: {reward:7.3f}\n")
+
+        self.Haar_update()
+
+        info = {}
         return (self.state, reward, terminated, truncated, info)
 
     def canonicalDecomposition(self):
@@ -702,7 +670,7 @@ class ExpNoisyTwoQubitEnv(gym.Env):
 
             return phase1, L1, L2, phase2, R1, R2, c0, c1, c2
 
-        return KAK_2q(self.unitary_U_target)
+        return KAK_2q(self.U_target_dm)
 
     def KakActionCalculation(self):
 
