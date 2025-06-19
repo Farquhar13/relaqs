@@ -35,12 +35,29 @@ class TwoQubitChangingEnv(RandomNoisyTwoQubitEnv):
         self.U_initial = self.unitary_to_superoperator(U)
         self.U_initial_dm = U.copy()
 
-
     def reset(self, *, seed=None, options=None):
         _, info = super().reset()
         self.set_target_gate()
         self.set_initial_gate()
         starting_observation = self.get_observation()
         return starting_observation, info
+
+    def return_env_config(self):
+        env_config = super().get_default_env_config()
+        env_config.update({
+            "num_Haar_basis": self.num_Haar_basis,
+            "steps_per_Haar": self.steps_per_Haar,
+            "verbose": self.verbose,
+            "U_init": self.U_initial,
+            "U_target": self.U_target,
+            "target_generation_function": self.target_generation_function,
+            "initial_generation_function": self.initial_generation_function,
+            "U_target_list": self.U_target_list,
+            "U_initial_list": self.U_initial_list,
+            "detuning_list": self.detuning_list,  # qubit detuning
+            "relaxation_rates_list": self.relaxation_rates_list,
+            "relaxation_ops": self.relaxation_ops,
+        })
+        return env_config
 
 

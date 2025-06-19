@@ -30,12 +30,12 @@ def get_month_of_single_qubit_data(file_name, qubit_label):
     return t1_list, t2_list
 
 
-def get_month_of_all_qubit_data(file_name):
+def get_month_of_all_qubit_data(file_name, q_label = "1"):
     noise_data = None
     with open(file_name) as f:
         noise_data = json.load(f)
     days = list(range(1, 28))
-    n_qubits = len(noise_data['T1']["1"])
+    n_qubits = len(noise_data['T1'][q_label])
     t1_list = []
     t2_list = []
     for day in days:

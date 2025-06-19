@@ -176,7 +176,7 @@ def get_last_episode_step(raw_data):
     last_indices = raw_data.groupby('Episode Id').tail(1).index.tolist()
     return last_indices
 
-def perform_action_analysis(df):
+def perform_action_analysis(df, save_dir=None):
     # Get the last step of each episode in the dataset
     last_step = get_last_episode_step(df)
 
@@ -457,7 +457,7 @@ def sample_noise_parameters(t1_t2_noise_file=None, detuning_noise_file=None, mac
         t1_list = np.random.uniform(40e-6, 200e-6, 100)
         t2_list = np.random.uniform(40e-6, 200e-6, 100)
     else:
-        t1_list, t2_list = get_month_of_all_qubit_data(QUANTUM_NOISE_DATA_DIR + t1_t2_noise_file) # in seconds
+        t1_list, t2_list = get_month_of_all_qubit_data(QUANTUM_NOISE_DATA_DIR + t1_t2_noise_file, q_label=qubit_label) # in seconds
 
     if detuning_noise_file is None:
         mean = 0
@@ -470,38 +470,38 @@ def sample_noise_parameters(t1_t2_noise_file=None, detuning_noise_file=None, mac
 
     return list(t1_list), list(t2_list), detunings
 
-def do_inferencing(alg, n_episodes_for_inferencing, quantum_noise_file_path):
-    """
-    alg: The trained model
-    n_episodes_for_inferencing: Number of episodes to do during the training
-    """
-
-    assert n_episodes_for_inferencing > 0
-    env = return_env_from_alg(alg)
-    obs, info = env.reset()
-    t1_list, t2_list, detuning_list = sample_noise_parameters(quantum_noise_file_path)
-    env.relaxation_rates_list = [np.reciprocal(t1_list).tolist(), np.reciprocal(t2_list).tolist()]
-    env.detuning_list = detuning_list
-    num_episodes = 0
-    episode_reward = 0.0
-    print("Inferencing is starting ....")
-    while num_episodes < n_episodes_for_inferencing:
-        print("episode : ", num_episodes)
-        # Compute an action (`a`).
-        a = alg.compute_single_action(
-            observation=obs,
-            policy_id="default_policy",  # <- default value
-        )
-        # Send the computed action `a` to the env.
-        obs, reward, done, truncated, _ = env.step(a)
-        episode_reward += reward
-        # Is the episode `done`? -> Reset.
-        if done:
-            print(f"Episode done: Total reward = {episode_reward}")
-            obs, info = env.reset()
-            num_episodes += 1
-            episode_reward = 0.0
-    return env, alg
+# def do_inferencing(alg, n_episodes_for_inferencing, quantum_noise_file_path):
+#     """
+#     alg: The trained model
+#     n_episodes_for_inferencing: Number of episodes to do during the training
+#     """
+#
+#     assert n_episodes_for_inferencing > 0
+#     env = return_env_from_alg(alg)
+#     obs, info = env.reset()
+#     t1_list, t2_list, detuning_list = sample_noise_parameters(quantum_noise_file_path)
+#     env.relaxation_rates_list = [np.reciprocal(t1_list).tolist(), np.reciprocal(t2_list).tolist()]
+#     env.detuning_list = detuning_list
+#     num_episodes = 0
+#     episode_reward = 0.0
+#     print("Inferencing is starting ....")
+#     while num_episodes < n_episodes_for_inferencing:
+#         print("episode : ", num_episodes)
+#         # Compute an action (`a`).
+#         a = alg.compute_single_action(
+#             observation=obs,
+#             policy_id="default_policy",  # <- default value
+#         )
+#         # Send the computed action `a` to the env.
+#         obs, reward, done, truncated, _ = env.step(a)
+#         episode_reward += reward
+#         # Is the episode `done`? -> Reset.
+#         if done:
+#             print(f"Episode done: Total reward = {episode_reward}")
+#             obs, info = env.reset()
+#             num_episodes += 1
+#             episode_reward = 0.0
+#     return env, alg
 
 def load_model(path):
     "path (str): Path to the file usually beginning with the word 'checkpoint' "

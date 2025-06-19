@@ -1,20 +1,32 @@
+# import sys
+# sys.path.append('./src/')
+
 import ray
+# from ray.rllib.algorithms.ddpg import DDPGConfig
+# from ray.tune.registry import register_env
 from relaqs.environments.noisy_two_qubit_analytical_env import NoisyTwoQubitEnv
-from relaqs.environments.two_qubit_changing_gate import TwoQubitChangingEnv
 from relaqs.save_results import SaveResults
 from relaqs.plot_data import plot_data
 import logging
 import warnings
+
+from relaqs.quantum_noise_data.get_data import get_month_of_single_qubit_data, get_month_of_all_qubit_data
+from relaqs import quantum_noise_data
+from relaqs import QUANTUM_NOISE_DATA_DIR
+from relaqs import RESULTS_DIR
+
 from qutip.operators import *
 from qutip.qip.operations import cnot
 from relaqs.api.utils import *
 from relaqs.api import gates
-import datetime
+from relaqs.api.utils import *
+import os
+
 import numpy as np
-import warnings
-import logging
 
 np.seterr(divide='ignore', invalid='ignore')
+import datetime
+
 logging.getLogger("ray").setLevel(logging.ERROR)
 logging.getLogger("ray.rllib").setLevel(logging.ERROR)
 logging.getLogger("gym").setLevel(logging.ERROR)
@@ -27,21 +39,19 @@ t1_t2_noise_file = "april/ibm_nairobi_month_is_4.json"
 # detuning data
 detuning_noise_file = "qubit_detuning_data.json"
 
-def run(env=TwoQubitChangingEnv, n_training_episodes=1, u_target_list = [gates.RandomSUN()], u_initial_list = [gates.RandomSUN()], save=True, plot=True):
-    ray.init()
+
+def run(env=NoisyTwoQubitEnv, n_training_episodes=1, U_initial = None, U_target = None, save=True, plot=True):
+    ray.init(num_cpus=14)
 
     # ---------------------> Configure algorithm and Environment <-------------------------
     alg_config = DDPGConfig()
     alg_config.framework("torch")
 
     env_config = env.get_default_env_config()
-
+    env_config["U_target"] = U_target.get_matrix()
+    env_config["U_initial"] = U_initial.get_matrix()
     env_config["num_Haar_basis"] = 3
     env_config["steps_per_Haar"] = 1
-
-    env_config["U_target_list"] = u_target_list
-    env_config["U_initial_list"] = u_initial_list
-
     # env_config['verbose'] = False
 
     # ---------------------> Get quantum noise data <-------------------------
@@ -49,17 +59,18 @@ def run(env=TwoQubitChangingEnv, n_training_episodes=1, u_target_list = [gates.R
     t1_list2, t2_list2, detuning_list2 = sample_noise_parameters(t1_t2_noise_file, detuning_noise_file, qubit_label="2")
     # env_config["relaxation_rates_list"] = [t1_list1, t2_list2, t1_list2, t2_list2]  # using real T1 data
     # env_config["detuning_list"] = [detuning_list1, detuning_list2]
-    # ------------------------------------------------------------------------
 
     alg_config.environment(env, env_config=env_config)
 
     alg_config.rollouts(batch_mode="complete_episodes")
+
     # ---------------------------------Alg Configs---------------------------------
+
     alg_config.actor_hiddens = [768] * 6  # ~3.5 M params
     alg_config.critic_hiddens = [768] * 6
 
-    alg_config.actor_lr = 1e-4
-    alg_config.critic_lr = 3e-4
+    alg_config.actor_lr = 5e-5
+    alg_config.critic_lr = 1e-4
 
     # TD3 stabilisers
     alg_config.twin_q = True
@@ -72,8 +83,8 @@ def run(env=TwoQubitChangingEnv, n_training_episodes=1, u_target_list = [gates.R
     alg_config.grad_clip = 1.0
 
     # Replay & batching
-    alg_config.train_batch_size = 512
-    alg_config.num_steps_sampled_before_learning_starts = 20_000
+    alg_config.train_batch_size = 1024
+    alg_config.num_steps_sampled_before_learning_starts = 10_000
     alg_config.replay_buffer_config["capacity"] = 500_000
 
     # Exploration
@@ -82,21 +93,37 @@ def run(env=TwoQubitChangingEnv, n_training_episodes=1, u_target_list = [gates.R
         "ou_base_scale": 0.2,
         "ou_theta": 0.15,
         "ou_sigma": 0.2,
-        "initial_scale": 2.0,
-        "final_scale": 0.2,
+        "initial_scale": 1.0,
+        "final_scale": 0.1,
         "scale_timesteps": 40_000,
     }
 
     alg_config.lr_schedule = [[0, 8e-5],
                               [50_000, 4e-5],
-                              [100_000, 2e-5],]
-
+                              [100_000, 2e-5], ]
+    alg_config.actor_hidden_activation = "relu"
+    alg_config.critic_hidden_activation = "relu"
     # Rollouts (CPU parallelism)
-    # alg_config.rollouts(
-    #     num_rollout_workers=11,
-    #     num_envs_per_worker=1,
-    #     rollout_fragment_length=200,
-    # )
+    # # alg_config.rollouts(
+    # #     num_rollout_workers=11,
+    # #     num_envs_per_worker=1,
+    # #     rollout_fragment_length=200,
+    # # )
+    #
+    # -------------------------------------------
+
+    # alg_config.train_batch_size = 1
+    # alg_config.actor_hiddens = [1] * 1
+    # alg_config.critic_hiddens = [1] * 1
+    # alg_config.train_batch_size = 1
+
+    # alg_config.actor_hidden_activation = "relu"
+    # alg_config.critic_hidden_activation = "relu"
+    # alg_config.num_steps_sampled_before_learning_starts = 1024
+    # alg_config.exploration_config["scale_timesteps"] = 4096
+    # alg_config.num_steps_sampled_before_learning_starts = 100
+    # alg_config.exploration_config["scale_timesteps"] = 1_000
+
     # ---------------------------------------------------------------------
 
     alg = alg_config.build()
@@ -111,10 +138,19 @@ def run(env=TwoQubitChangingEnv, n_training_episodes=1, u_target_list = [gates.R
             print(f"---- Iterations completed: {i + 1}/{n_training_episodes} ----")
     except KeyboardInterrupt:
         print("Training interrupted by user.")
-
+        interrupted = True  # <-- FLAG
+    else:
+        interrupted = False  # <-- FLAG
+    finally:
+        # Always free Ray resources
+        alg.stop()  # <-- flush workers, save checkpoints correctly
+        ray.shutdown()  # <-- terminates all worker processes
     training_end_time = get_time()
     training_elapsed_time = training_end_time - training_start_time
     print(f"Training Elapsed Time: {training_elapsed_time}")
+
+    print(f'U_Initial:\n{env_config["U_initial"]}\n\nU_Target:\n{env_config["U_target"]}')
+
 
     # ---------------------> Save Results <-------------------------
     if save is True:
@@ -124,29 +160,34 @@ def run(env=TwoQubitChangingEnv, n_training_episodes=1, u_target_list = [gates.R
                              "%Y-%m-%d_%H-%M-%S/"))
         save_dir = sr.save_results()
         print("Results saved to:", save_dir)
-    # --------------------------------------------------------------
+        # --------------------------------------------------------------
+
+    # Save U_initial and U_target to the same results directory
+    np.savez(os.path.join(save_dir, "gates.npz"),
+                U_initial=env_config['U_initial'],
+                 U_target=env_config['U_target'])
 
     # ---------------------> Plot Data <-------------------------
     if plot is True:
         assert save is True, "If plot=True, then save must also be set to True"
-        env_string = f"[Noisy 2 Qubit] "
-        initial_gate_title = " ".join(f"{target_gate}-" for target_gate in env_config["U_initial_list"])
-        target_gate_title = " ".join(f"{target_gate}-" for target_gate in env_config["U_target_list"])
-        plot_data(save_dir = save_dir, figure_title=env_string + "Initial Gates: "+ initial_gate_title + f"Target Gates: " + target_gate_title, plot_filename='Training')
+        env_string = "{SAME GATE EVERY EPISODE} "
+        initial_gate_title = f'{U_initial}'
+        target_gate_title = f'{U_target}'
+        plot_data(save_dir=save_dir,
+                  figure_title=env_string + "Initial Gates: " + initial_gate_title + f"Target Gates: " + target_gate_title,
+                  plot_filename='Training')
         print("Plots Created")
-    # --------------------------------------------------------------
+        # --------------------------------------------------------------
 
 
 def main():
-    env = TwoQubitChangingEnv
-    n_training_episodes = 60
-
-    u_initial_list = [gates.II()]
-    u_target_list = [gates.RandomSUN()]
-
+    env = ScratchNoisyTwoQubitEnv
+    n_training_episodes = 100
+    U_initial = gates.RandomSUN()
+    U_target = gates.RandomSUN()
     save = True
     plot = True
-    run(env, n_training_episodes=n_training_episodes, u_target_list = u_target_list, u_initial_list=u_initial_list,save=save, plot=plot)
+    run(env, n_training_episodes, U_initial, U_target, save, plot)
 
 
 if __name__ == "__main__":

@@ -222,3 +222,25 @@ class Cnot(Gate):
         return f"CNOT"
     def get_matrix(self):
         return cnot().data.toarray()
+
+class Cz(Gate):
+    def __str__(self):
+        return f"CZ"
+    def get_matrix(self):
+        return cphase(np.pi).data.toarray()
+
+class exchangeOp(Gate):
+    def __str__(self):
+        return f"exchangeOp"
+    def get_matrix(self):
+        sig_p = np.array([[0, 1], [0, 0]])
+        sig_m = np.array([[0, 0], [1, 0]])
+        return tensor(Qobj(sig_p),Qobj(sig_m)).data.toarray() + tensor(Qobj(sig_m),Qobj(sig_p)).data.toarray()
+
+
+class X1(Gate):
+    def __str__(self):
+        return f"X1"
+
+    def get_matrix(self):
+        return tensor(Qobj(X().get_matrix()),Qobj(I().get_matrix())).data.toarray()
