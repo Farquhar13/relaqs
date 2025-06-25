@@ -19,8 +19,6 @@ t1_t2_noise_file = "april/ibm_nairobi_month_is_4.json"
 detuning_noise_file = "qubit_detuning_data.json"
 
 def run(env=ChangingTargetEnv, n_training_episodes=1, u_target_list = [gates.RandomSU2()], save=True, plot=True, noise_factor=1, scale_noise=False):
-    ray.init(num_cpus=14)
-
     # ---------------------> Configure algorithm and Environment <-------------------------
     alg_config = DDPGConfig()
     alg_config.framework("torch")

@@ -107,17 +107,16 @@ def plot_data(save_dir, episode_length=None, figure_title='', plot_filename='plo
     avg_final_infelity_per_episode = np.round(avg_final_infelity_per_episode, rounding_precision)
     avg_sum_of_rewards_per_episode = np.round(avg_sum_of_rewards_per_episode, rounding_precision)
 
+    last_100_avg_final_fidelity = np.mean(avg_final_fidelity_per_episode[-100:])
     if len(avg_final_fidelity_per_episode) >= 100:
-        print("Average final fidelity over last 100 episodes", np.mean(avg_final_fidelity_per_episode[-100:]))
-    if len(avg_sum_of_rewards_per_episode) >= 100:
-        print("Average final reward over last 100 episodes", np.mean(avg_sum_of_rewards_per_episode[-100:]))
+        print("Average final fidelity over last 100 episodes", last_100_avg_final_fidelity)
 
     # -------------------------------> Plotting <-------------------------------------
     rcParams['font.family'] = 'serif'
     mpl.style.use('seaborn-v0_8')
 
     fig, (ax1, ax2, ax3) = plt.subplots(1, 3)
-    fig.suptitle(figure_title)
+    fig.suptitle(figure_title + " avg final fidelity = " + str(last_100_avg_final_fidelity))
     fig.set_size_inches(10, 5)
 
     # ----> fidelity <----
