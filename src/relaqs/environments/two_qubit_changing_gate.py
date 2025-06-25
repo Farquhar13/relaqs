@@ -1,8 +1,8 @@
 import random
-from relaqs.environments import RandomNoisyTwoQubitEnv
+from relaqs.environments import NoisyTwoQubitEnv
 from relaqs.api.gates import *
 
-class TwoQubitChangingEnv(RandomNoisyTwoQubitEnv):
+class TwoQubitChangingEnv(NoisyTwoQubitEnv):
     @classmethod
     def get_default_env_config(cls):
         config_dict = super().get_default_env_config()

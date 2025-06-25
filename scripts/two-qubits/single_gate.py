@@ -4,7 +4,8 @@
 import ray
 # from ray.rllib.algorithms.ddpg import DDPGConfig
 # from ray.tune.registry import register_env
-from relaqs.environments.noisy_two_qubit_analytical_env import NoisyTwoQubitEnv
+from relaqs.environments.noisy_two_qubit_analytical_env import AnalyticalNoisyTwoQubitEnv
+from relaqs.environments.noisy_two_qubit import NoisyTwoQubitEnv
 from relaqs.save_results import SaveResults
 from relaqs.plot_data import plot_data
 import logging
@@ -181,7 +182,7 @@ def run(env=NoisyTwoQubitEnv, n_training_episodes=1, U_initial = None, U_target 
 
 
 def main():
-    env = ScratchNoisyTwoQubitEnv
+    env = NoisyTwoQubitEnv
     n_training_episodes = 100
     U_initial = gates.RandomSUN()
     U_target = gates.RandomSUN()

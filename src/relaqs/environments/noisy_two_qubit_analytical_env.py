@@ -69,7 +69,7 @@ B = 1 / np.sqrt(2) * np.array([[1., 0, 0, 1.j], [0, 1.j, 1., 0],
 B_dagger = np.conj(B).T
 
 
-class NoisyTwoQubitEnv(gym.Env):
+class AnalyticalNoisyTwoQubitEnv(gym.Env):
     @classmethod
     def get_default_env_config(cls):
         return {

@@ -7,7 +7,7 @@ import json
 import numpy as np
 import pandas as pd
 from types import MappingProxyType
-from relaqs.environments.noisy_two_qubit_analytical_env import NoisyTwoQubitEnv
+from relaqs.environments.noisy_two_qubit_analytical_env import AnalyticalNoisyTwoQubitEnv
 from relaqs.environments.changing_target_gate import ChangingTargetEnv, NoisyChangingTargetEnv
 
 l = frozenset([])

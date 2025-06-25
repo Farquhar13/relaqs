@@ -4,7 +4,7 @@
 import ray
 # from ray.rllib.algorithms.ddpg import DDPGConfig
 # from ray.tune.registry import register_env
-from relaqs.environments.noisy_two_qubit_analytical_env import NoisyTwoQubitEnv
+from relaqs.environments.noisy_two_qubit_analytical_env import AnalyticalNoisyTwoQubitEnv
 from relaqs.save_results import SaveResults
 from relaqs.plot_data import plot_data
 import logging
@@ -35,7 +35,7 @@ t1_t2_noise_file = "april/ibm_nairobi_month_is_4.json"
 # detuning data
 detuning_noise_file = "qubit_detuning_data.json"
 
-def run(env = NoisyTwoQubitEnv,n_training_episodes=1, save=True, plot=True):
+def run(env = AnalyticalNoisyTwoQubitEnv, n_training_episodes=1, save=True, plot=True):
     ray.init(num_cpus=14)
 
     # ---------------------> Configure algorithm and Environment <-------------------------

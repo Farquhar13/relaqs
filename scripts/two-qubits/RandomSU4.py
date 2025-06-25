@@ -1,5 +1,5 @@
 import ray
-from relaqs.environments.noisy_two_qubit_analytical_env import NoisyTwoQubitEnv
+from relaqs.environments.noisy_two_qubit_analytical_env import AnalyticalNoisyTwoQubitEnv
 from relaqs.environments.two_qubit_changing_gate import TwoQubitChangingEnv
 from relaqs.save_results import SaveResults
 from relaqs.plot_data import plot_data

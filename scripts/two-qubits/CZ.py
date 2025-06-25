@@ -4,7 +4,7 @@ sys.path.append('./src/')
 import ray
 from ray.rllib.algorithms.ddpg import DDPGConfig
 from ray.tune.registry import register_env
-from relaqs.environments import NoisyTwoQubitEnv
+from relaqs.environments import AnalyticalNoisyTwoQubitEnv
 from relaqs.save_results import SaveResults
 from relaqs.plot_data import plot_data
 
@@ -19,7 +19,7 @@ import datetime
 
 
 def env_creator(config):
-    return NoisyTwoQubitEnv(config)
+    return AnalyticalNoisyTwoQubitEnv(config)
 
 # def save_grad_to_file(resultdict):
 #     try:
@@ -52,14 +52,14 @@ def run(n_training_iterations=1, save=True, plot=True):
         # alg_config = DDPGConfig()
         alg_config.framework("torch")
         
-        env_config = NoisyTwoQubitEnv.get_default_env_config()
+        env_config = AnalyticalNoisyTwoQubitEnv.get_default_env_config()
         CZ = cphase(np.pi).data.toarray()
         env_config["U_target"] = CZ
 
         alg_config.environment("my_env", env_config=env_config)
     
         alg_config.rollouts(batch_mode="complete_episodes")
-        alg_config.train_batch_size = NoisyTwoQubitEnv.get_default_env_config()["steps_per_Haar"]
+        alg_config.train_batch_size = AnalyticalNoisyTwoQubitEnv.get_default_env_config()["steps_per_Haar"]
 
         ### working 1-3 sets
         alg_config.actor_lr = 1e-4
