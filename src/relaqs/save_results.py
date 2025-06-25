@@ -7,7 +7,8 @@ import json
 import numpy as np
 import pandas as pd
 from types import MappingProxyType
-from relaqs.environments.noisy_two_qubit_env import NoisyTwoQubitEnv
+from relaqs.environments.noisy_two_qubit_analytical_env import AnalyticalNoisyTwoQubitEnv
+from relaqs.environments.changing_target_gate import ChangingTargetEnv, NoisyChangingTargetEnv
 
 l = frozenset([])
 FrozenSetType = type(l)
@@ -60,9 +61,8 @@ class SaveResults():
 
         return path
 
-    def save_env_transitions(self, two_qubit = False):
-        columns = ['Fidelity', 'Rewards', 'Actions', 'Operator', 'Target Operator', 'Target DM', 'Initial DM',
-                   'Episode Id']
+    def save_env_transitions(self, two_qubit=False):
+        columns = ['Fidelity', 'Rewards', 'Actions', 'Operator', 'Target Operator', 'Target DM', 'Initial DM', 'Episode Id']
         if two_qubit:
             df = pd.DataFrame(self.env.transition_history)
         else:
@@ -86,10 +86,10 @@ class SaveResults():
 
     def save_results(self):
         if self.env is not None:
-            if isinstance(self.env, NoisyTwoQubitEnv):
-                self.save_env_transitions(two_qubit=True)
+            if isinstance(self.env, NoisyChangingTargetEnv):
+                self.save_env_transitions(two_qubit=False)
             else:
-                self.save_env_transitions()
+                self.save_env_transitions(two_qubit=True)
         if self.alg is not None:
             self.save_config(self.alg.get_config().to_dict())
             self.save_model()
