@@ -104,26 +104,7 @@ def run(env=NoisyTwoQubitEnv, n_training_episodes=1, U_initial = None, U_target 
                               [100_000, 2e-5], ]
     alg_config.actor_hidden_activation = "relu"
     alg_config.critic_hidden_activation = "relu"
-    # Rollouts (CPU parallelism)
-    # # alg_config.rollouts(
-    # #     num_rollout_workers=11,
-    # #     num_envs_per_worker=1,
-    # #     rollout_fragment_length=200,
-    # # )
-    #
-    # -------------------------------------------
 
-    # alg_config.train_batch_size = 1
-    # alg_config.actor_hiddens = [1] * 1
-    # alg_config.critic_hiddens = [1] * 1
-    # alg_config.train_batch_size = 1
-
-    # alg_config.actor_hidden_activation = "relu"
-    # alg_config.critic_hidden_activation = "relu"
-    # alg_config.num_steps_sampled_before_learning_starts = 1024
-    # alg_config.exploration_config["scale_timesteps"] = 4096
-    # alg_config.num_steps_sampled_before_learning_starts = 100
-    # alg_config.exploration_config["scale_timesteps"] = 1_000
 
     # ---------------------------------------------------------------------
 
