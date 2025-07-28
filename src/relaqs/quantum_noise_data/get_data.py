@@ -30,7 +30,7 @@ def get_month_of_single_qubit_data(file_name, qubit_label):
     return t1_list, t2_list
 
 
-def get_month_of_all_qubit_data(file_name, q_label = "1"):
+def get_month_of_all_qubit_data(file_name, q_label):
     noise_data = None
     with open(file_name) as f:
         noise_data = json.load(f)

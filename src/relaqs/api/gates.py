@@ -244,3 +244,14 @@ class X1(Gate):
 
     def get_matrix(self):
         return tensor(Qobj(X().get_matrix()),Qobj(I().get_matrix())).data.toarray()
+
+class temp(Gate):
+    def __init__(self, gate_array):
+        super().__init__()
+        self.gate_array = gate_array
+
+    def __str__(self):
+        return f"Temp Gate"
+
+    def get_matrix(self):
+        return self.gate_array

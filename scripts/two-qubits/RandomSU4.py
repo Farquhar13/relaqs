@@ -41,12 +41,11 @@ def run(env=TwoQubitChangingEnv, n_training_episodes=1, u_target_list = [gates.R
 
     env_config["U_target_list"] = u_target_list
     env_config["U_initial_list"] = u_initial_list
-
     # env_config['verbose'] = False
 
     # ---------------------> Get quantum noise data <-------------------------
-    t1_list1, t2_list2, detuning_list1 = sample_noise_parameters(t1_t2_noise_file, detuning_noise_file, qubit_label="1")
-    t1_list2, t2_list2, detuning_list2 = sample_noise_parameters(t1_t2_noise_file, detuning_noise_file, qubit_label="2")
+    # t1_list1, t2_list2, detuning_list1 = sample_noise_parameters(t1_t2_noise_file, detuning_noise_file, qubit_label="1")
+    # t1_list2, t2_list2, detuning_list2 = sample_noise_parameters(t1_t2_noise_file, detuning_noise_file, qubit_label="2")
     # env_config["relaxation_rates_list"] = [t1_list1, t2_list2, t1_list2, t2_list2]  # using real T1 data
     # env_config["detuning_list"] = [detuning_list1, detuning_list2]
     # ------------------------------------------------------------------------
@@ -55,49 +54,15 @@ def run(env=TwoQubitChangingEnv, n_training_episodes=1, u_target_list = [gates.R
 
     alg_config.rollouts(batch_mode="complete_episodes")
     # ---------------------------------Alg Configs---------------------------------
-    alg_config.actor_hiddens = [768] * 6  # ~3.5 M params
+    alg_config.actor_hiddens = [768] * 6
     alg_config.critic_hiddens = [768] * 6
 
     alg_config.actor_lr = 1e-4
     alg_config.critic_lr = 3e-4
 
-    # TD3 stabilisers
-    alg_config.twin_q = True
-    alg_config.policy_delay = 3  # update actor every 3 critic steps
-    alg_config.smooth_target_policy = True
-    alg_config.target_noise = 0.2
-    alg_config.target_noise_clip = 0.5
-
-    alg_config.use_state_preprocessor = True
-    alg_config.grad_clip = 1.0
-
-    # Replay & batching
     alg_config.train_batch_size = 512
-    alg_config.num_steps_sampled_before_learning_starts = 20_000
-    alg_config.replay_buffer_config["capacity"] = 500_000
-
-    # Exploration
-    alg_config.exploration_config = {
-        "type": "OrnsteinUhlenbeckNoise",
-        "ou_base_scale": 0.2,
-        "ou_theta": 0.15,
-        "ou_sigma": 0.2,
-        "initial_scale": 2.0,
-        "final_scale": 0.2,
-        "scale_timesteps": 40_000,
-    }
-
-    alg_config.lr_schedule = [[0, 8e-5],
-                              [50_000, 4e-5],
-                              [100_000, 2e-5],]
-
-    # Rollouts (CPU parallelism)
-    # alg_config.rollouts(
-    #     num_rollout_workers=11,
-    #     num_envs_per_worker=1,
-    #     rollout_fragment_length=200,
-    # )
-    # ---------------------------------------------------------------------
+    alg_config.num_steps_sampled_before_learning_starts = 256
+    alg_config.exploration_config["scale_timesteps"] = 1024
 
     alg = alg_config.build()
 
@@ -129,7 +94,7 @@ def run(env=TwoQubitChangingEnv, n_training_episodes=1, u_target_list = [gates.R
     # ---------------------> Plot Data <-------------------------
     if plot is True:
         assert save is True, "If plot=True, then save must also be set to True"
-        env_string = f"[Noisy 2 Qubit] "
+        env_string = f"[RandomSU(4) Diff every episode] "
         initial_gate_title = " ".join(f"{target_gate}-" for target_gate in env_config["U_initial_list"])
         target_gate_title = " ".join(f"{target_gate}-" for target_gate in env_config["U_target_list"])
         plot_data(save_dir = save_dir, figure_title=env_string + "Initial Gates: "+ initial_gate_title + f"Target Gates: " + target_gate_title, plot_filename='Training')
@@ -139,9 +104,9 @@ def run(env=TwoQubitChangingEnv, n_training_episodes=1, u_target_list = [gates.R
 
 def main():
     env = TwoQubitChangingEnv
-    n_training_episodes = 60
+    n_training_episodes = 75
 
-    u_initial_list = [gates.II()]
+    u_initial_list = [gates.RandomSUN()]
     u_target_list = [gates.RandomSUN()]
 
     save = True

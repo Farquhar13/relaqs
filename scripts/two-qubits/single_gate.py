@@ -42,7 +42,6 @@ detuning_noise_file = "qubit_detuning_data.json"
 
 
 def run(env=NoisyTwoQubitEnv, n_training_episodes=1, U_initial = None, U_target = None, save=True, plot=True):
-    ray.init(num_cpus=14)
 
     # ---------------------> Configure algorithm and Environment <-------------------------
     alg_config = DDPGConfig()
@@ -56,9 +55,9 @@ def run(env=NoisyTwoQubitEnv, n_training_episodes=1, U_initial = None, U_target 
     # env_config['verbose'] = False
 
     # ---------------------> Get quantum noise data <-------------------------
-    t1_list1, t2_list2, detuning_list1 = sample_noise_parameters(t1_t2_noise_file, detuning_noise_file, qubit_label="1")
-    t1_list2, t2_list2, detuning_list2 = sample_noise_parameters(t1_t2_noise_file, detuning_noise_file, qubit_label="2")
-    # env_config["relaxation_rates_list"] = [t1_list1, t2_list2, t1_list2, t2_list2]  # using real T1 data
+    # t1_list1, t2_list2, detuning_list1 = sample_noise_parameters(t1_t2_noise_file, detuning_noise_file, qubit_label="1")
+    # t1_list2, t2_list2, detuning_list2 = sample_noise_parameters(t1_t2_noise_file, detuning_noise_file, qubit_label="2")
+    # # env_config["relaxation_rates_list"] = [t1_list1, t2_list2, t1_list2, t2_list2]  # using real T1 data
     # env_config["detuning_list"] = [detuning_list1, detuning_list2]
 
     alg_config.environment(env, env_config=env_config)
@@ -67,8 +66,15 @@ def run(env=NoisyTwoQubitEnv, n_training_episodes=1, U_initial = None, U_target 
 
     # ---------------------------------Alg Configs---------------------------------
 
-    alg_config.actor_hiddens = [768] * 6  # ~3.5 M params
-    alg_config.critic_hiddens = [768] * 6
+    if isinstance(env, AnalyticalNoisyTwoQubitEnv):
+        # Analytical
+        alg_config.actor_hiddens = [1] * 1  # ~3.5 M params
+        alg_config.critic_hiddens = [1] * 1
+        alg_config.train_batch_size = 1
+
+
+    alg_config.actor_hiddens = [800] * 6  # ~3.5 M params
+    alg_config.critic_hiddens = [800] * 6
 
     alg_config.actor_lr = 5e-5
     alg_config.critic_lr = 1e-4
@@ -85,7 +91,7 @@ def run(env=NoisyTwoQubitEnv, n_training_episodes=1, U_initial = None, U_target 
 
     # Replay & batching
     alg_config.train_batch_size = 1024
-    alg_config.num_steps_sampled_before_learning_starts = 10_000
+    alg_config.num_steps_sampled_before_learning_starts = 5_000
     alg_config.replay_buffer_config["capacity"] = 500_000
 
     # Exploration
@@ -99,12 +105,8 @@ def run(env=NoisyTwoQubitEnv, n_training_episodes=1, U_initial = None, U_target 
         "scale_timesteps": 40_000,
     }
 
-    alg_config.lr_schedule = [[0, 8e-5],
-                              [50_000, 4e-5],
-                              [100_000, 2e-5], ]
     alg_config.actor_hidden_activation = "relu"
     alg_config.critic_hidden_activation = "relu"
-
 
     # ---------------------------------------------------------------------
 
@@ -163,13 +165,30 @@ def run(env=NoisyTwoQubitEnv, n_training_episodes=1, U_initial = None, U_target 
 
 
 def main():
+
+    #Analytical Setup
+    # env = AnalyticalNoisyTwoQubitEnv
+    load_previous_gates = False
+    path = '/Users/vishchaudhary/rl-repo/results/two-qubit gates/2025-07-02_22-45-26/gates.npz'
+
     env = NoisyTwoQubitEnv
-    n_training_episodes = 100
-    U_initial = gates.RandomSUN()
-    U_target = gates.RandomSUN()
+    n_training_episodes = 60
+
+    U_initial = gates.II()
+    U_target = gates.Cnot()
+
+    if isinstance(env, AnalyticalNoisyTwoQubitEnv):
+        n_training_episodes = 10
+
+    if load_previous_gates:
+        data = np.load(path)
+        U_initial = gates.temp(gate_array=data['U_initial'])
+        U_target = gates.temp(gate_array=data['U_target'])
+
     save = True
     plot = True
-    run(env, n_training_episodes, U_initial, U_target, save, plot)
+
+    run(env, n_training_episodes, U_initial=U_initial, U_target=U_target, save=save, plot=plot)
 
 
 if __name__ == "__main__":

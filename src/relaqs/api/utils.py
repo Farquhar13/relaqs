@@ -324,7 +324,7 @@ def network_config_creator(alg_config):
 
     return network_config
 
-def config_table(env_config, alg_config, filepath, continue_training=False, original_training_date = None, noise_factor = 1):
+def config_table(env_config, alg_config, filepath, continue_training=False, original_training_date = None):
     filtered_env_config = {}
     filtered_explor_config = {}
     network_config = network_config_creator(alg_config)
@@ -403,7 +403,6 @@ def config_table(env_config, alg_config, filepath, continue_training=False, orig
         for index, row in network_df.iterrows():
             f.write(f"| {row['Config Name']: <46} | {row['Current Value']: <21} | {row['Default Value']: <18} |\n")
         f.write("+------------------------------------------------+----------------------+--------------------+\n")
-        f.write(f"Noise Factor: {noise_factor}\n")
         if continue_training:
             f.write(f"Training continued from results on: {original_training_date}\n")
 
@@ -451,7 +450,7 @@ def dm_fidelity(rho, sigma):
     #return np.abs(np.trace(sqrtm(sqrtm(rho) @ sigma @ sqrtm(rho))))**2
     return np.trace(sqrtm(sqrtm(rho) @ sigma @ sqrtm(rho))).real**2
 
-def sample_noise_parameters(t1_t2_noise_file=None, detuning_noise_file=None, machine_name = None, qubit_label=None):
+def sample_noise_parameters(t1_t2_noise_file=None, detuning_noise_file=None, machine_name = None, qubit_label="1"):
     # ---------------------> Get quantum noise data <-------------------------
     if t1_t2_noise_file is None:
         t1_list = np.random.uniform(40e-6, 200e-6, 100)

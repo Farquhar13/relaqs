@@ -56,17 +56,13 @@ def do_inferencing(env, train_alg, curr_gate):
             return inference_env, target_gate, inference_env.transition_history[-1]
 
 def inference_and_save(inference_list, save_dir, train_alg, n_episodes_for_inferencing):
-    # columns = ['Fidelity', 'Rewards', 'Actions', 'Operator', 'Target Operator', 'Target DM', 'Initial DM', 'Episode Id']
-
     for curr_gate in inference_list:
 
-        # gate_save_dir = save_dir + f'/{curr_gate}/'
+        gate_save_dir = os.path.join(save_dir, str(curr_gate))
         plot_filename = f'inference_{curr_gate}.png'
-        # os.makedirs(gate_save_dir)
+        os.makedirs(gate_save_dir, exist_ok=True)
 
         figure_title = f"[NOISY 2 Qubit] Inferencing on Multiple Different {str(curr_gate)}."
-
-        env_data_title = f"{curr_gate}_"
         transition_history = []
 
         for inference_iteration in range(n_episodes_for_inferencing):
@@ -77,28 +73,25 @@ def inference_and_save(inference_list, save_dir, train_alg, n_episodes_for_infer
 
         df = pd.DataFrame(transition_history)
         # df.to_pickle(env_data_title + "env_data.pkl")  # easier to load than csv
-        # df.to_csv(gate_save_dir + env_data_title + "env_data.csv", index=False)  # backup in case pickle doesn't work
-        multiple_inference_visuals(df, figure_title=figure_title, save_dir=None, plot_filename=plot_filename,
+        df.to_csv(gate_save_dir +  "env_data.csv", index=False)  # backup in case pickle doesn't work
+        multiple_inference_visuals(df, figure_title=figure_title, save_dir=gate_save_dir, plot_filename=plot_filename,
                                gate=curr_gate)
 
 def main():
 
-    path = "/Users/vishchaudhary/rl-repo/results/two-qubit gates/CNOT2025-05-15_05-02-22/model_checkpoints"
-    n_episodes_for_inferencing = 50
+    base_path = "/Users/vishchaudhary/rl-repo/results/two-qubit gates/2025-07-18_18-08-42/"
+    n_episodes_for_inferencing = 1000
 
-    # alg, training_time, save_dir = run(env, n_training_episodes, u_target_list, save, plot, noise_factor = noise_factor)
-    model = load_model(path)
-    # inferencing_gate = [gates.RandomSUN(), gates.Cnot(), gates.Cz(), gates.exchangeOp(), gates.X1()]
-    inferencing_gate = [gates.RandomSUN(), gates.Cnot(), gates.Cz()]
+    model = load_model(os.path.join(base_path, "model_checkpoints"))
+    inferencing_gate = [gates.Cz(), gates.Cnot(), gates.RandomSUN()]
 
     print(f'\nStarting inferencing\n')
     inference_start = get_time()
-    inference_and_save(inference_list=inferencing_gate, save_dir=None, train_alg=model,
+    inference_and_save(inference_list=inferencing_gate, save_dir=base_path, train_alg=model,
                        n_episodes_for_inferencing=n_episodes_for_inferencing)
     inference_end = get_time()
     inference_elapsed_time = inference_end - inference_start
 
-    # print(f"Training Time: {training_time}")
     print(f"Inference Time + Saving Inference + Inference Visuals: {inference_elapsed_time}")
     # print(f'Results saved to: {save_dir}')
 
