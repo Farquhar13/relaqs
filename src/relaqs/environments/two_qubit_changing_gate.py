@@ -1,6 +1,7 @@
 import random
 from relaqs.environments import NoisyTwoQubitEnv
 from relaqs.api.gates import *
+from relaqs.api.utils import normalize
 
 class TwoQubitChangingEnv(NoisyTwoQubitEnv):
     @classmethod
@@ -10,6 +11,7 @@ class TwoQubitChangingEnv(NoisyTwoQubitEnv):
         config_dict["U_initial_list"] = []
         config_dict["target_generation_function"] = RandomSUN
         config_dict["initial_generation_function"] = RandomSUN
+        config_dict["observation_space_size"] = 512 + 2 + 4 + 512 + 512
         return config_dict
 
     def __init__(self, env_config):
@@ -39,8 +41,23 @@ class TwoQubitChangingEnv(NoisyTwoQubitEnv):
         _, info = super().reset()
         self.set_target_gate()
         self.set_initial_gate()
+        self.U = self.U_initial.copy()
         starting_observation = self.get_observation()
         return starting_observation, info
+
+    def get_observation(self):
+        net_target_gate = self.U_target @ self.U_initial.conjugate().transpose()
+        U_diff_action_target = self.unitary_to_observation(net_target_gate @ self.U.conjugate().transpose())
+
+        normalized_detuning = np.array([normalize(self.detuning[0], self.detuning_list[0]),
+                               normalize(self.detuning[1], self.detuning_list[1])])
+        normalized_relaxation_rates = np.array([normalize(self.relaxation_rate[0], self.relaxation_rates_list[0]),
+                                       normalize(self.relaxation_rate[1], self.relaxation_rates_list[1]),
+                                       normalize(self.relaxation_rate[2], self.relaxation_rates_list[2]),
+                                       normalize(self.relaxation_rate[3], self.relaxation_rates_list[3])])
+        return np.concatenate([normalized_detuning, normalized_relaxation_rates,
+                        self.unitary_to_observation(net_target_gate), self.unitary_to_observation(self.U),
+                               U_diff_action_target], axis=0)
 
     def return_env_config(self):
         env_config = super().get_default_env_config()

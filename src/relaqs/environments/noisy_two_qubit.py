@@ -68,7 +68,7 @@ class NoisyTwoQubitEnv(gym.Env):
             # in seconds, total time is final_time * 5 because of single qubit + two_qubit + single_qubit + two_qubit + single_qubit
             "num_Haar_basis": 3,  # number of Haar basis (need to update for odd combinations)
             "steps_per_Haar": 1,  # steps per Haar basis per episode
-            "detuning_list": np.random.normal(0, np.pi / 100 / 30E-9, size=(2, 100)).tolist(),  # qubit detuning
+            "detuning_list": np.random.normal(0, 1e7, size=(2, 100)).tolist(),  # qubit detuning
             "verbose": True,
             "relaxation_rates_list": [[1/60E-6/2/np.pi],[1/30E-6/2/np.pi],[1/66E-6/2/np.pi],[1/5E-6/2/np.pi]], # relaxation lists of list of floats to be sampled from when resetting environment.
             # "relaxation_rates_list": [[0], [0], [0], [0]],  # for now
@@ -76,7 +76,7 @@ class NoisyTwoQubitEnv(gym.Env):
             # relaxation operator lists for T1 and T2, respectively
             # "observation_space_size": 2*256 + 1 + 4 + 2 # 2*16 = (complex number)*(density matrix elements = 4)^2, + 1 for fidelity + 4 for relaxation rate + 2 for detuning
             # "observation_space_size": 2*16 + 1 + 4 + 2 # 2*16 = (complex number)*(target unitary matrix elements = 4)^2, + 1 for fidelity + 4 for relaxation rate + 2 for detuning
-            # "observation_space_size": 2 * 256 + 2 + 4,
+            # "observation_space_size": 2*256 + 2 + 4,
             "observation_space_size": 2 * 16 + 2 + 4
         }
 
@@ -110,6 +110,7 @@ class NoisyTwoQubitEnv(gym.Env):
         self.state = self.unitary_to_observation(self.U_initial)  # starting observation space
         self.prev_fidelity = 0  # previous step' fidelity for rewarding
 
+        #NEW
         self.PiFreq = np.pi / self.final_time / self.steps_per_Haar
         self.g_eff_max = self.PiFreq / 2
         self.gamma_magnitude_max = 1.8 * np.pi / self.final_time / self.steps_per_Haar
@@ -166,7 +167,10 @@ class NoisyTwoQubitEnv(gym.Env):
                                        normalize(self.relaxation_rate[2], self.relaxation_rates_list[2]),
                                        normalize(self.relaxation_rate[3], self.relaxation_rates_list[3])]
 
-        return np.append(normalized_detuning + normalized_relaxation_rates, self.unitary_to_observation(self.U_target_dm))
+        U_diff = self.U_target_dm @ self.U_initial_dm.conj().transpose()
+
+        return np.append(normalized_detuning + normalized_relaxation_rates,
+                         self.unitary_to_observation(U_diff))
 
 
     def compute_fidelity(self):

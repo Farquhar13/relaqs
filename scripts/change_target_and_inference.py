@@ -18,7 +18,7 @@ t1_t2_noise_file = "april/ibm_nairobi_month_is_4.json"
 # detuning data
 detuning_noise_file = "qubit_detuning_data.json"
 
-def run(env=ChangingTargetEnv, n_training_episodes=1, u_target_list = [gates.RandomSU2()], save=True, plot=True, noise_factor=1, scale_noise=False):
+def run(env=ChangingTargetEnv, n_training_episodes=1, u_target_list = [gates.RandomSU2()], save=True, plot=True):
     # ---------------------> Configure algorithm and Environment <-------------------------
     alg_config = DDPGConfig()
     alg_config.framework("torch")
@@ -30,10 +30,6 @@ def run(env=ChangingTargetEnv, n_training_episodes=1, u_target_list = [gates.Ran
 
     # ---------------------> Get quantum noise data <-------------------------
     t1_list, t2_list, detuning_list = sample_noise_parameters(t1_t2_noise_file, detuning_noise_file)
-    if scale_noise:
-        t1_list = [val/ noise_factor for val in t1_list]
-        t2_list = [val / noise_factor for val in t2_list]
-        detuning_list = [val * noise_factor for val in detuning_list]
     env_config["relaxation_rates_list"] = [t1_list, t2_list]  # using real T1 data
     env_config["detuning_list"] = detuning_list
 
@@ -82,12 +78,12 @@ def run(env=ChangingTargetEnv, n_training_episodes=1, u_target_list = [gates.Ran
         print("Results saved to:", save_dir)
     # --------------------------------------------------------------
 
-    config_table(env_config=env_config,alg_config=alg_config,filepath=save_dir, noise_factor=noise_factor)
+    config_table(env_config=env_config,alg_config=alg_config,filepath=save_dir)
 
     # ---------------------> Plot Data <-------------------------
     if plot is True:
         assert save is True, "If plot=True, then save must also be set to True"
-        env_string = f"[Noise Factor: {noise_factor}] Noisy " if isinstance(env, NoisyChangingTargetEnv) else "Noiseless"
+        env_string = f"Noisy " if isinstance(env, NoisyChangingTargetEnv) else "Noiseless"
         training_figure_title = " ".join(f"{target_gate}-" for target_gate in env_config["U_target_list"])
         plot_data(save_dir = save_dir, figure_title=env_string + training_figure_title, plot_filename='Training')
         print("Plots Created")
@@ -167,13 +163,12 @@ def main():
     save = True
     plot = True
 
-    n_training_episodes = 200
+    n_training_episodes = 100
     n_episodes_for_inferencing = 10_000
-    noise_factor = 1
 
     u_target_list = [gates.RandomSU2()]
 
-    alg, training_time, save_dir = run(env, n_training_episodes, u_target_list, save, plot, noise_factor = noise_factor)
+    alg, training_time, save_dir = run(env, n_training_episodes, u_target_list, save, plot)
 
     inferencing_gate = [gates.RandomSU2(), gates.Rx(), gates.Ry(), gates.Rz(),
                         gates.X(), gates.Y(), gates.Z(), gates.H(), gates.S(),

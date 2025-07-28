@@ -79,16 +79,15 @@ class AnalyticalNoisyTwoQubitEnv(gym.Env):
             "final_time": 30E-9, # in seconds, total time is final_time * 5 because of single qubit + two_qubit + single_qubit + two_qubit + single_qubit
             "num_Haar_basis": 3,  # number of Haar basis (need to update for odd combinations)
             "steps_per_Haar": 1,  # steps per Haar basis per episode
-            "detuning_list": np.random.normal(0, np.pi/100/30E-9, size=(2, 100)).tolist(),  # qubit detuning
+            "detuning_list": np.random.normal(0, 1e7, size=(2, 100)).tolist(),  # qubit detuning
             "save_data_every_step": 1,
             "verbose": True,
-            # "relaxation_rates_list": [[1/60E-6/2/np.pi],[1/30E-6/2/np.pi],[1/66E-6/2/np.pi],[1/5E-6/2/np.pi]], # relaxation lists of list of floats to be sampled from when resetting environment.
-            "relaxation_rates_list": [[0],[0],[0],[0]], # for now
+            "relaxation_rates_list": [[1/60E-6/2/np.pi],[1/30E-6/2/np.pi],[1/66E-6/2/np.pi],[1/5E-6/2/np.pi]], # relaxation lists of list of floats to be sampled from when resetting environment.
             "relaxation_ops": [sigmam1,sigmam2,Qobj(Z1),Qobj(Z2)], #relaxation operator lists for T1 and T2, respectively
             # "observation_space_size": 2*256 + 1 + 4 + 2 # 2*16 = (complex number)*(density matrix elements = 4)^2, + 1 for fidelity + 4 for relaxation rate + 2 for detuning
             # "observation_space_size": 2*16 + 1 + 4 + 2 # 2*16 = (complex number)*(target unitary matrix elements = 4)^2, + 1 for fidelity + 4 for relaxation rate + 2 for detuning
             # "observation_space_size": 2 * 256 + 2,
-            "observation_space_size": 2 * 16 + 2
+            "observation_space_size": 2 * 16 + 2 + 4
         }
 
     #physics: https://journals.aps.org/prapplied/pdf/10.1103/PhysRevApplied.10.054062, eq(2)
@@ -118,14 +117,14 @@ class AnalyticalNoisyTwoQubitEnv(gym.Env):
 
     def __init__(self, env_config):
         self.final_time = env_config["final_time"]  # Final time for the gates
-        self.PiFreq = np.pi / self.final_time
         self.observation_space = gym.spaces.Box(low=0, high=1, shape=(env_config["observation_space_size"],))  # propagation operator elements + fidelity + relaxation + detuning
         self.action_space = gym.spaces.Box(low=-0.1*np.ones(27), high=0.1*np.ones(27)) #alpha1, alpha2, alphaC, gamma_magnitude1, gamma_phase1, gamma_magnitude2, gamma_phase2
         self.detuning_list = env_config["detuning_list"]
         self.detuning_update()
-        self._U_target = self.unitary_to_superoperator(env_config["U_target"])
-        self.unitary_U_target = env_config["U_target"]
+        self.U_target_dm = env_config["U_target"]
+        self.U_target = self.unitary_to_superoperator(env_config["U_target"])
         self.U_initial = self.unitary_to_superoperator(env_config["U_initial"])
+        self.U_initial_dm = env_config["U_initial"]
         self.num_Haar_basis = env_config["num_Haar_basis"]
         self.steps_per_Haar = env_config["steps_per_Haar"]
         self.verbose = env_config["verbose"]
@@ -142,24 +141,30 @@ class AnalyticalNoisyTwoQubitEnv(gym.Env):
         self.state = self.unitary_to_observation(self.U_initial)  # starting observation space
         # self.state = self.unitary_to_observation(self.unitary_U_target)  # starting observation space
         self.prev_fidelity = 0  # previous step' fidelity for rewarding
+
+        self.PiFreq = np.pi / self.final_time
         self.alpha_max = self.PiFreq / 2
         self.g_eff_max = self.PiFreq / 2
         self.gamma_phase_max = np.pi
         self.gamma_magnitude_max = self.PiFreq / 2
+
         self.transition_history = []
         self.env_config = env_config
         self.initialActions = self.KakActionCalculation()
+
+        self.episode_id = 0
+
+        # self.PiFreq = np.pi / self.final_time / self.steps_per_Haar
+        # self.g_eff_max = self.PiFreq / 2
+        # self.gamma_magnitude_max = 1.8 * np.pi / self.final_time / self.steps_per_Haar
+        # self.gamma_phase_max = 1.1675 * np.pi
+        # self.alpha_max = 0.05E9  # detuning of the control pulse in Hz
 
     def detuning_update(self):
         qubit_1_detuning = random.sample(self.detuning_list[0],k=1)[0]
         qubit_2_detuning = random.sample(self.detuning_list[1],k=1)[0]
 
         self.detuning = [qubit_1_detuning, qubit_2_detuning]
-        
-    def update_target_unitary(self, U):
-        self._U_target = self.unitary_to_superoperator(U)
-        self.unitary_U_target = U
-        self.initialActions = self.KakActionCalculation()    
 
     def unitary_to_superoperator(self, U):
         return (spre(Qobj(U)) * spost(Qobj(U.conjugate().transpose()))).data.toarray()
@@ -176,25 +181,16 @@ class AnalyticalNoisyTwoQubitEnv(gym.Env):
     def get_observation(self):
         normalized_detuning = [normalize(self.detuning[0], self.detuning_list[0]),
                                normalize(self.detuning[1], self.detuning_list[1])]
-        # normalized_relaxation_rates = [normalize(self.relaxation_rate[0], self.relaxation_rates_list[0]),
-        #                                normalize(self.relaxation_rate[1], self.relaxation_rates_list[1]),
-        #                                normalize(self.relaxation_rate[2], self.relaxation_rates_list[2]),
-        #                                normalize(self.relaxation_rate[3], self.relaxation_rates_list[3])]
-        # return np.append([self.compute_fidelity()] +
-        #                   normalized_relaxation_rates +
-        #                   normalized_detuning,
-        #                   self.unitary_to_observation(self.unitary_U_target))
-        # U_diff = self._U_target @ self.U_initial.conj().T
-        # return np.append(normalized_detuning,
-        #                 self.unitary_to_observation(self._U_target))
-        return np.append(normalized_detuning,
-                         self.unitary_to_observation(self.unitary_U_target))
+        normalized_relaxation_rates = [normalize(self.relaxation_rate[0], self.relaxation_rates_list[0]),
+                                       normalize(self.relaxation_rate[1], self.relaxation_rates_list[1]),
+                                       normalize(self.relaxation_rate[2], self.relaxation_rates_list[2]),
+                                       normalize(self.relaxation_rate[3], self.relaxation_rates_list[3])]
+        return np.append(normalized_relaxation_rates +
+                          normalized_detuning,
+                          self.unitary_to_observation(self.U_target_dm))
 
     def compute_fidelity(self):
-        # U_target_dagger = self.unitary_to_superoperator(self.unitary_U_target.conjugate().transpose())
-        # self._U_target.conjugate().transpose()
-        return float(np.abs(np.trace(self._U_target.conjugate().transpose() @ self.U))) / (self.U.shape[0])
-        # return F
+        return float(np.abs(np.trace(self.U_target.conjugate().transpose() @ self.U))) / (self.U.shape[0])
 
     def unitary_to_observation(self, U):
         return (
@@ -208,7 +204,7 @@ class AnalyticalNoisyTwoQubitEnv(gym.Env):
 
     def reset(self, *, seed=None, options=None):
         self.initialActions = self.KakActionCalculation()
-        # self.U = self.U_initial.copy()
+        self.U = self.U_initial.copy()
         self.state = self.get_observation()
         self.current_Haar_num = 1
         self.current_step_per_Haar = 1
@@ -227,13 +223,12 @@ class AnalyticalNoisyTwoQubitEnv(gym.Env):
         self.H_tot1_3 = []        
         self.H_tot2_3 = []
         self.H_tot1_4 = []        
-        
-        self.L_array = []
-        self.U_array = []
+
         self.prev_fidelity = 0
         self.relaxation_rate = self.get_relaxation_rate()
         self.detuning = 0
         self.detuning_update()
+        self.episode_id += 1
         starting_observeration = self.get_observation()
         info = {}
         return starting_observeration, info
@@ -241,7 +236,7 @@ class AnalyticalNoisyTwoQubitEnv(gym.Env):
     def step(self, action):
         num_time_bins = 2 ** (self.current_Haar_num - 1)
         self.initialActions = self.KakActionCalculation()
-        
+        action = np.zeros(27)
         ### First single qubit gate
         
         if self.current_Haar_num==1:
@@ -477,7 +472,7 @@ class AnalyticalNoisyTwoQubitEnv(gym.Env):
                     self.H_tot1_4.append(factor * H_elem)
 
         # self.L = ([])  # at every step we calculate L again because minimal time bin changes
-        self.U = np.eye(16)  # identity
+        self.U = self.U_initial.copy()  # identity
         # self.U = self.U_initial.copy()
         # self.unitary_U = np.eye(4)
 
@@ -550,7 +545,7 @@ class AnalyticalNoisyTwoQubitEnv(gym.Env):
         self.state = self.get_observation()
 
         if self.current_Haar_num == self.num_Haar_basis:
-            self.transition_history.append([fidelity, reward, *action, *self.U.flatten()])
+            self.transition_history.append([fidelity, reward, *action, *self.U.flatten(), self.episode_id])
        
         # Determine if episode is over
         truncated = False
@@ -675,7 +670,7 @@ class AnalyticalNoisyTwoQubitEnv(gym.Env):
             
             return phase1, L1, L2, phase2, R1, R2, c0, c1, c2
                         
-        return KAK_2q(self.unitary_U_target)
+        return KAK_2q(self.U_target_dm@self.U_initial_dm.conj().transpose())
 
     def KakActionCalculation(self):
         
