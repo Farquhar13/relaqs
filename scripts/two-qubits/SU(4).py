@@ -54,13 +54,13 @@ def run(env=TwoQubitChangingEnv, n_training_episodes=1, u_target_list = [gates.R
 
     alg_config.rollouts(batch_mode="complete_episodes")
     # ---------------------------------Alg Configs---------------------------------
-    alg_config.actor_hiddens = [768] * 6
-    alg_config.critic_hiddens = [768] * 6
+    alg_config.actor_hiddens = [800] * 6
+    alg_config.critic_hiddens = [800] * 6
 
-    alg_config.actor_lr = 1e-4
-    alg_config.critic_lr = 3e-4
+    alg_config.actor_lr = 5e-5
+    alg_config.critic_lr = 1e-4
 
-    alg_config.train_batch_size = 512
+    alg_config.train_batch_size = 1024
     alg_config.num_steps_sampled_before_learning_starts = 256
     alg_config.exploration_config["scale_timesteps"] = 1024
 

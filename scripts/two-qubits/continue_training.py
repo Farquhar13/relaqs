@@ -96,7 +96,7 @@ def continue_training(training_dir, n_training_episodes=1, save=True, plot=True)
 
 
 def main():
-    training_dir = "/Users/vishchaudhary/rl-repo/results/two-qubit gates/2025-07-01_16-43-33/"
+    training_dir = "file_path"
     n_training_episodes = 60
     save = True
     plot = True

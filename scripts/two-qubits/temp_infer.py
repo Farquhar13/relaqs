@@ -79,7 +79,7 @@ def inference_and_save(inference_list, save_dir, train_alg, n_episodes_for_infer
 
 def main():
 
-    base_path = "/Users/vishchaudhary/rl-repo/results/two-qubit gates/2025-07-18_18-08-42/"
+    base_path = "file_path"
     n_episodes_for_inferencing = 1000
 
     model = load_model(os.path.join(base_path, "model_checkpoints"))

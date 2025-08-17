@@ -171,8 +171,8 @@ def main():
     alg, training_time, save_dir = run(env, n_training_episodes, u_target_list, save, plot)
 
     inferencing_gate = [gates.RandomSU2(), gates.Rx(), gates.Ry(), gates.Rz(),
-                        gates.X(), gates.Y(), gates.Z(), gates.H(), gates.S(),
-                        gates.XY_combination(),gates.ZX_combination(),gates.HS()]
+                        gates.X(), gates.Y(), gates.Z(), gates.H(), gates.S()]
+
     print(f'\nStarting inferencing\n')
     inference_start = get_time()
     inference_and_save(inference_list=inferencing_gate, save_dir=save_dir, train_alg=alg,

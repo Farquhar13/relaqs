@@ -72,9 +72,10 @@ def run(env=NoisyTwoQubitEnv, n_training_episodes=1, U_initial = None, U_target 
         alg_config.critic_hiddens = [1] * 1
         alg_config.train_batch_size = 1
 
-
-    alg_config.actor_hiddens = [800] * 6  # ~3.5 M params
-    alg_config.critic_hiddens = [800] * 6
+    else:
+        alg_config.actor_hiddens = [800] * 6  # ~3.5 M params
+        alg_config.critic_hiddens = [800] * 6
+        alg_config.train_batch_size = 1024
 
     alg_config.actor_lr = 5e-5
     alg_config.critic_lr = 1e-4
@@ -89,8 +90,7 @@ def run(env=NoisyTwoQubitEnv, n_training_episodes=1, U_initial = None, U_target 
     alg_config.use_state_preprocessor = True
     alg_config.grad_clip = 1.0
 
-    # Replay & batching
-    alg_config.train_batch_size = 1024
+    # Replay
     alg_config.num_steps_sampled_before_learning_starts = 5_000
     alg_config.replay_buffer_config["capacity"] = 500_000
 
@@ -168,8 +168,9 @@ def main():
 
     #Analytical Setup
     # env = AnalyticalNoisyTwoQubitEnv
+    #If you want to run the analytical baseline on the EXACT same SU(4) as a previously trained agent
     load_previous_gates = False
-    path = '/Users/vishchaudhary/rl-repo/results/two-qubit gates/2025-07-02_22-45-26/gates.npz'
+    path = 'file_path'
 
     env = NoisyTwoQubitEnv
     n_training_episodes = 60
