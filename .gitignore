@@ -5,7 +5,6 @@ error_testing.py
 results/
 gradfile
 venv/
-requirements.txt
 ray/
 .idea
 /scripts/gate_synt_testing.py

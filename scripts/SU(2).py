@@ -52,18 +52,22 @@ def run(env=ChangingTargetEnv, n_training_episodes=1, u_target_list = [gates.Ran
     alg = alg_config.build()
 
     n_training_episodes *= env_config['num_Haar_basis'] * env_config['steps_per_Haar']
-
-    update_every_percent = 2
-    update_interval = max(1, int(n_training_episodes * (update_every_percent / 100)))
-
     training_start_time = get_time()
+
     # ---------------------> Train Agent <-------------------------
-    for i in range(n_training_episodes):
-        alg.train()
-        # Print update every x%
-        if (i + 1) % int(update_interval) == 0 or (i + 1) == n_training_episodes:
-            percent_complete = (i + 1) / n_training_episodes * 100
-            print(f"Training Progress: {percent_complete:.0f}% complete")
+    try:
+        for i in range(n_training_episodes):
+            result = alg.train()
+            print(f"---- Iterations completed: {i + 1}/{n_training_episodes} ----")
+    except KeyboardInterrupt:
+        print("Training interrupted by user.")
+        interrupted = True  # <-- FLAG
+    else:
+        interrupted = False  # <-- FLAG
+    finally:
+        # Always free Ray resources
+        alg.stop()  # <-- flush workers, save checkpoints correctly
+        ray.shutdown()  # <-- terminates all worker processes
 
     training_end_time = get_time()
     training_elapsed_time = training_end_time - training_start_time

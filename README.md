@@ -13,10 +13,9 @@ The `scripts` folder contains example files to train an RL agent in our environm
 
 Some examples:
 
-* `single_gate.py` learn optimal pulses for a single-qubit gate
-* `changing_gate.py` learn a random SU(2), with the target gate changing on each episode
-* `two-qubts/CZ.py` learn the two-qubit CZ gate
-* `two-qubits/RandomSU4.py` learn a random SU(4), with the target gate changing on each episode
+* `SU(2).py` Trains an agent to learn optimal pulses for random SU(2) gates, with the initial and target gates changing each episode. Can also be configured to train on a single fixed gate or on a set of gates (e.g., X, Y, Z, …). By default, inference runs automatically after training.
+* `two-qubts/single_gate.py` Trains an agent on a specified two-qubit gate. By default, it runs I → CNOT (U_initial → U_target), but any valid two-qubit gates can be substituted. Supports SU(4) → SU(4) training where both gates remain fixed across episodes. Switching the environment to "AnalyticalNoisyTwoQubitEnv" outputs analytical performance under the same noise model as the agent. You may also specify a previously trained file path to reuse the exact same SU(4) gates.
+* `two-qubits/temp_infer.py` Runs inference with a trained agent. The set of gates for inference can be modified. Available gates are listed in `src/relaqs/api/gates.py`
 
 ## Environments
 `src/relaqs/environments`
@@ -39,10 +38,6 @@ pip install -e .
 
 ### Required Packages:
 The require packages should be installed automatically by pip.  Legacy install instructions are below:
-
-
-
-
 
 One may install required packages in a number of ways. Either by manually installing, or by executing one of the commands below:
 
