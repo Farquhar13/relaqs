@@ -65,16 +65,14 @@ def run(env=NoisyTwoQubitEnv, n_training_episodes=1, U_initial = None, U_target 
     alg_config.rollouts(batch_mode="complete_episodes")
 
     # ---------------------------------Alg Configs---------------------------------
-
-    if isinstance(env, AnalyticalNoisyTwoQubitEnv):
-        # Analytical
-        alg_config.actor_hiddens = [1] * 1  # ~3.5 M params
-        alg_config.critic_hiddens = [1] * 1
-        alg_config.train_batch_size = 1
+    # alg_config.actor_hiddens = [1] * 1  # ~3.5 M params
+    # alg_config.critic_hiddens = [1] * 1
+    # alg_config.train_batch_size = 1
 
 
-    alg_config.actor_hiddens = [800] * 6  # ~3.5 M params
+    alg_config.actor_hiddens = [800] * 6  #
     alg_config.critic_hiddens = [800] * 6
+    alg_config.train_batch_size = 1024
 
     alg_config.actor_lr = 5e-5
     alg_config.critic_lr = 1e-4
@@ -89,8 +87,6 @@ def run(env=NoisyTwoQubitEnv, n_training_episodes=1, U_initial = None, U_target 
     alg_config.use_state_preprocessor = True
     alg_config.grad_clip = 1.0
 
-    # Replay & batching
-    alg_config.train_batch_size = 1024
     alg_config.num_steps_sampled_before_learning_starts = 5_000
     alg_config.replay_buffer_config["capacity"] = 500_000
 
@@ -167,18 +163,18 @@ def run(env=NoisyTwoQubitEnv, n_training_episodes=1, U_initial = None, U_target 
 def main():
 
     #Analytical Setup
-    # env = AnalyticalNoisyTwoQubitEnv
+    env = AnalyticalNoisyTwoQubitEnv
     load_previous_gates = False
     path = '/Users/vishchaudhary/rl-repo/results/two-qubit gates/2025-07-02_22-45-26/gates.npz'
 
-    env = NoisyTwoQubitEnv
-    n_training_episodes = 60
+    # env = NoisyTwoQubitEnv
+    n_training_episodes = 10
 
     U_initial = gates.II()
     U_target = gates.Cnot()
 
-    if isinstance(env, AnalyticalNoisyTwoQubitEnv):
-        n_training_episodes = 10
+    # if isinstance(env, AnalyticalNoisyTwoQubitEnv):
+    #     n_training_episodes = 5
 
     if load_previous_gates:
         data = np.load(path)

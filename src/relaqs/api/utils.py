@@ -2,7 +2,7 @@ import ray
 import numpy as np
 import pandas as pd
 from numpy.linalg import eigvalsh
-from scipy.linalg import sqrtm
+from scipy.linalg import sqrtm, expm
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.ddpg import DDPGConfig
 from relaqs import RESULTS_DIR
@@ -83,6 +83,117 @@ def preprocess_matrix_string(matrix_str):
     matrix_str = matrix_str.replace('] [', '], [')
 
     return matrix_str
+
+# def generate_traceless_hermitian(dim):
+#     """
+#     Generate a random traceless Hermitian matrix of shape (dim x dim).
+#     """
+#     A = np.random.randn(dim, dim) + 1j * np.random.randn(dim, dim)
+#     H = (A + A.conj().T) / 2  # Make it Hermitian
+#     trace = np.trace(H)
+#     H -= (trace / dim) * np.eye(dim)  # Make it traceless
+#     return H
+#
+# def perturb_su4_gate(U0, epsilon=0.01):
+#     """
+#     Perturb a given SU(4) matrix by a small, SU(4)-preserving step.
+#
+#     Parameters:
+#     - U0: original 4x4 SU(4) matrix
+#     - epsilon: step size (how far to move on the SU(4) manifold)
+#
+#     Returns:
+#     - U_new: perturbed SU(4) matrix
+#     """
+#     assert U0.shape == (4, 4), "U0 must be a 4x4 matrix."
+#
+#     # Step 1: Generate a random traceless Hermitian matrix
+#     H = generate_traceless_hermitian(4)
+#
+#     # Step 2: Create a unitary matrix via exponential map
+#     delta = expm(1j * epsilon * H)
+#
+#     # Step 3: Multiply with U0 to stay in SU(4)
+#     U_new = delta @ U0
+#     # compute the determinant (a complex number of unit modulus up to round‐off)
+#     d = np.linalg.det(U_new)
+#     # remove its phase by dividing by the 4th root
+#     U_new /= d ** (1 / 4)
+#     # Step 4: Optional verification
+#     assert np.allclose(U_new.conj().T @ U_new, np.eye(4), atol=1e-10), "U_new is not unitary."
+#     assert np.allclose(U_new.conj().T, np.linalg.inv(U_new), atol=1e-10), "U_new is not reversible."
+#     assert np.abs(np.linalg.det(U_new) - 1.0) < 1e-10, "U_new does not have determinant 1."
+#
+#     return U_new
+
+def compute_su4_generators():
+    """
+    Construct the 15 traceless Hermitian generators of su(4):
+      - 6 symmetric off-diagonals:   E_{jk} + E_{kj}
+      - 6 skew-Hermitian off-diagonals:  -i(E_{jk} - E_{kj})
+      - 3 diagonal traceless matrices
+    Returns:
+        gens: list of 15 (4×4) numpy arrays
+    """
+    gens = []
+    N = 4
+    # Off-diagonal generators
+    for j in range(N):
+        for k in range(j+1, N):
+            E_jk = np.zeros((N, N), dtype=complex)
+            E_jk[j, k] = 1
+            E_jk[k, j] = 1
+            gens.append(E_jk)             # symmetric: real part
+
+            F_jk = np.zeros((N, N), dtype=complex)
+            F_jk[j, k] = -1j
+            F_jk[k, j] =  1j
+            gens.append(F_jk)             # skew: imaginary part
+
+    # Diagonal generators
+    # For l = 1..N-1, diag = diag(1,...,1,-l,0,...,0), normalized
+    for l in range(1, N):
+        diag = np.zeros((N, N), dtype=complex)
+        diag[:l, :l] = np.eye(l)
+        diag[l, l] = -l
+        # normalization factor so Tr(G^2)=2
+        norm = np.sqrt(2.0 / (l * (l + 1)))
+        gens.append(norm * diag)
+
+    return gens  # len(gens) == 15
+
+
+def perturb_su4_gate(U0: np.ndarray,
+                        su4_gens,
+                          epsilon: float = 0.01,
+                          tol: float = 1e-8) -> np.ndarray:
+    """
+    Efficient SU(4) perturbation with checks + auto-fix of det=1.
+    """
+    # 1) Sample H from the 15-dim su(4) basis
+    coeffs = np.random.randn(len(su4_gens))           # 15 draws
+    H = sum(c * G for c, G in zip(coeffs, su4_gens))
+
+    # 2) Compute exp(i ε H) via eigendecomposition
+    w, Q = np.linalg.eigh(H)
+    delta = Q @ np.diag(np.exp(1j * epsilon * w)) @ Q.conj().T
+
+    # 3) Perturb and (temporarily) get U_new
+    U_new = delta @ U0
+
+    # (a) Unitarity check
+    np.testing.assert_allclose(
+            U_new.conj().T @ U_new, np.eye(4), atol=tol,err_msg="U_new is not unitary")
+
+    # (b) Determinant check & auto-fix
+    detU = np.linalg.det(U_new)
+    if not np.allclose(detU, 1.0, atol=tol):
+        # Renormalize: divide by 4th root of det
+        U_new /= detU**(1/4)
+        # Final assertions after fix
+        np.testing.assert_allclose(np.linalg.det(U_new), 1.0, atol=tol,err_msg=f"det(U_new) still bad: {np.linalg.det(U_new)}")
+
+    return U_new
 
 def check_unitary(matrices):
     """

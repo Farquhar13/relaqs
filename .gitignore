@@ -8,3 +8,5 @@ venv/
 requirements.txt
 ray/
 .idea
+/scripts/gate_synt_testing.py
+analysis/paper_plotting_func.ipynb

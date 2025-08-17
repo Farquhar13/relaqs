@@ -3,6 +3,7 @@ from relaqs.environments.two_qubit_changing_gate import TwoQubitChangingEnv
 from relaqs.save_results import SaveResults
 from relaqs.plot_data import *
 from relaqs.api import gates
+from relaqs.api.gates import RandomSUN
 from relaqs.api.utils import *
 import logging
 import warnings
@@ -29,6 +30,10 @@ def do_inferencing(env, train_alg, curr_gate):
     target_gate = curr_gate.get_matrix()  # Set new target gate for inference
 
     inference_env_config["U_target_list"] = [curr_gate]
+    if isinstance(curr_gate, RandomSUN):
+        inference_env_config["U_initial_list"] = [curr_gate]
+    else:
+        inference_env_config["U_initial_list"] = [gates.II()]
     # inference_env_config['verbose'] = False
     inference_env_config["U_target"] = target_gate
     env_class = type(env)
@@ -73,18 +78,17 @@ def inference_and_save(inference_list, save_dir, train_alg, n_episodes_for_infer
 
         df = pd.DataFrame(transition_history)
         # df.to_pickle(env_data_title + "env_data.pkl")  # easier to load than csv
-        df.to_csv(gate_save_dir +  "env_data.csv", index=False)  # backup in case pickle doesn't work
+        df.to_csv(gate_save_dir +  "/env_data.csv", index=False)  # backup in case pickle doesn't work
         multiple_inference_visuals(df, figure_title=figure_title, save_dir=gate_save_dir, plot_filename=plot_filename,
                                gate=curr_gate)
 
 def main():
-
-    base_path = "/Users/vishchaudhary/rl-repo/results/two-qubit gates/2025-07-18_18-08-42/"
-    n_episodes_for_inferencing = 1000
+    base_path = "/Users/vishchaudhary/rl-repo/results/two-qubit gates/2025-07-29_21-04-41/"
+    n_episodes_for_inferencing = 100
 
     model = load_model(os.path.join(base_path, "model_checkpoints"))
     inferencing_gate = [gates.Cz(), gates.Cnot(), gates.RandomSUN()]
-
+    # inferencing_gate = [gates.RandomSUN()]
     print(f'\nStarting inferencing\n')
     inference_start = get_time()
     inference_and_save(inference_list=inferencing_gate, save_dir=base_path, train_alg=model,

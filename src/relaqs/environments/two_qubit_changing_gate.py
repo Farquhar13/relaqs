@@ -1,7 +1,7 @@
 import random
 from relaqs.environments import NoisyTwoQubitEnv
 from relaqs.api.gates import *
-from relaqs.api.utils import normalize
+from relaqs.api.utils import normalize, compute_su4_generators, perturb_su4_gate
 
 class TwoQubitChangingEnv(NoisyTwoQubitEnv):
     @classmethod
@@ -11,7 +11,7 @@ class TwoQubitChangingEnv(NoisyTwoQubitEnv):
         config_dict["U_initial_list"] = []
         config_dict["target_generation_function"] = RandomSUN
         config_dict["initial_generation_function"] = RandomSUN
-        config_dict["observation_space_size"] = 512 + 2 + 4 + 512 + 512
+        config_dict["observation_space_size"] = 512 + 512 + 2 + 4 + 2 + 512 + 512
         return config_dict
 
     def __init__(self, env_config):
@@ -20,20 +20,24 @@ class TwoQubitChangingEnv(NoisyTwoQubitEnv):
         self.U_initial_list = env_config["U_initial_list"]
         self.target_generation_function = env_config["target_generation_function"]
         self.initial_generation_function = env_config["initial_generation_function"]
+        self.su4_gens = compute_su4_generators()
 
     def set_target_gate(self):
-        if len(self.U_target_list) == 0:
-            U = self.target_generation_function().get_matrix()
-        else:
-            U = random.choice(self.U_target_list).get_matrix()
+        # if len(self.U_target_list) == 0:
+        #     U = self.target_generation_function().get_matrix()
+        # else:
+        #     U = random.choice(self.U_target_list).get_matrix()
+
+        U = perturb_su4_gate(self.U_target_dm, self.su4_gens, epsilon = 0.01)
         self.U_target = self.unitary_to_superoperator(U)
         self.U_target_dm = U.copy()
 
     def set_initial_gate(self):
-        if len(self.U_initial_list) == 0:
-            U = self.initial_generation_function().get_matrix()
-        else:
-            U = random.choice(self.U_initial_list).get_matrix()
+        # if len(self.U_initial_list) == 0:
+        #     U = self.initial_generation_function().get_matrix()
+        # else:
+        #     U = random.choice(self.U_initial_list).get_matrix()
+        U = perturb_su4_gate(self.U_initial_dm, self.su4_gens, epsilon = 0.01)
         self.U_initial = self.unitary_to_superoperator(U)
         self.U_initial_dm = U.copy()
 
@@ -46,18 +50,21 @@ class TwoQubitChangingEnv(NoisyTwoQubitEnv):
         return starting_observation, info
 
     def get_observation(self):
-        net_target_gate = self.U_target @ self.U_initial.conjugate().transpose()
-        U_diff_action_target = self.unitary_to_observation(net_target_gate @ self.U.conjugate().transpose())
-
         normalized_detuning = np.array([normalize(self.detuning[0], self.detuning_list[0]),
                                normalize(self.detuning[1], self.detuning_list[1])])
         normalized_relaxation_rates = np.array([normalize(self.relaxation_rate[0], self.relaxation_rates_list[0]),
                                        normalize(self.relaxation_rate[1], self.relaxation_rates_list[1]),
                                        normalize(self.relaxation_rate[2], self.relaxation_rates_list[2]),
                                        normalize(self.relaxation_rate[3], self.relaxation_rates_list[3])])
-        return np.concatenate([normalized_detuning, normalized_relaxation_rates,
-                        self.unitary_to_observation(net_target_gate), self.unitary_to_observation(self.U),
-                               U_diff_action_target], axis=0)
+
+        U_diff = self.U_target @ self.U_initial.conj().transpose()
+        fidelity = self.compute_fidelity()
+
+        return np.concatenate([[-np.log10(max(1e-8, 1 - fidelity)),-np.log10(max(1e-8, 1 - self.prev_fidelity))],
+                               normalized_detuning, normalized_relaxation_rates,
+                        self.unitary_to_observation(self.U_initial),self.unitary_to_observation(self.U_target),
+                               self.unitary_to_observation(U_diff),
+                               self.unitary_to_observation(self.U @ U_diff.conj().transpose())], axis=0)
 
     def return_env_config(self):
         env_config = super().get_default_env_config()

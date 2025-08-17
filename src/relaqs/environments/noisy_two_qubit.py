@@ -68,7 +68,7 @@ class NoisyTwoQubitEnv(gym.Env):
             # in seconds, total time is final_time * 5 because of single qubit + two_qubit + single_qubit + two_qubit + single_qubit
             "num_Haar_basis": 3,  # number of Haar basis (need to update for odd combinations)
             "steps_per_Haar": 1,  # steps per Haar basis per episode
-            "detuning_list": np.random.normal(0, 1e7, size=(2, 100)).tolist(),  # qubit detuning
+            "detuning_list": np.random.normal(0, 1e5, size=(2, 100)).tolist(),  # qubit detuning
             "verbose": True,
             "relaxation_rates_list": [[1/60E-6/2/np.pi],[1/30E-6/2/np.pi],[1/66E-6/2/np.pi],[1/5E-6/2/np.pi]], # relaxation lists of list of floats to be sampled from when resetting environment.
             # "relaxation_rates_list": [[0], [0], [0], [0]],  # for now
@@ -197,7 +197,9 @@ class NoisyTwoQubitEnv(gym.Env):
         return truncated, terminated
 
     def compute_reward(self, fidelity):
-        return -np.log10(max(1e-8, 1 - fidelity))
+        # return -np.log10(max(1e-8, 1 - fidelity))
+        return (-3 * np.log10(1.0 - fidelity) + np.log10(1.0 - self.prev_fidelity)) + (
+                    3 * fidelity - self.prev_fidelity)
 
     def Haar_update(self):
         if (self.current_step_per_Haar == self.steps_per_Haar):  # For each Haar basis, if all trial steps ends, them move to next haar wavelet

@@ -41,7 +41,7 @@ def run(env=TwoQubitChangingEnv, n_training_episodes=1, u_target_list = [gates.R
 
     env_config["U_target_list"] = u_target_list
     env_config["U_initial_list"] = u_initial_list
-    # env_config['verbose'] = False
+    env_config['verbose'] = False
 
     # ---------------------> Get quantum noise data <-------------------------
     # t1_list1, t2_list2, detuning_list1 = sample_noise_parameters(t1_t2_noise_file, detuning_noise_file, qubit_label="1")
@@ -54,15 +54,30 @@ def run(env=TwoQubitChangingEnv, n_training_episodes=1, u_target_list = [gates.R
 
     alg_config.rollouts(batch_mode="complete_episodes")
     # ---------------------------------Alg Configs---------------------------------
-    alg_config.actor_hiddens = [768] * 6
-    alg_config.critic_hiddens = [768] * 6
-
-    alg_config.actor_lr = 1e-4
-    alg_config.critic_lr = 3e-4
-
-    alg_config.train_batch_size = 512
-    alg_config.num_steps_sampled_before_learning_starts = 256
+    alg_config.actor_hiddens = [900,800,700,700,600,500,400,300,200]
+    alg_config.critic_hiddens = [900,900,800,800,700,600]
+    alg_config.actor_lr = 8e-7
+    alg_config.critic_lr = 8e-6
+    alg_config.train_batch_size = 16
+    alg_config.num_steps_sampled_before_learning_starts = 256 #1024
     alg_config.exploration_config["scale_timesteps"] = 1024
+
+    # TD3 stabilisers
+    alg_config.twin_q = True
+    # alg_config.policy_delay = 2  # update actor every 2 critic steps
+    # alg_config.smooth_target_policy = True
+    # alg_config.target_noise = 0.10
+    # alg_config.target_noise_clip = 0.30
+    # alg_config.n_step = 3
+    # alg_config.use_state_preprocessor = True
+    # alg_config.grad_clip = 1.0
+    # alg_config.use_huber = True
+    # alg_config.huber_threshold = 1.0
+    # alg_config.tau = 0.005
+    # alg_config.training_intensity = 1.0
+    # alg_config.replay_buffer_config["capacity"] = 100_000
+
+
 
     alg = alg_config.build()
 
@@ -104,9 +119,9 @@ def run(env=TwoQubitChangingEnv, n_training_episodes=1, u_target_list = [gates.R
 
 def main():
     env = TwoQubitChangingEnv
-    n_training_episodes = 75
+    n_training_episodes = 40
 
-    u_initial_list = [gates.RandomSUN()]
+    u_initial_list = [gates.II()]
     u_target_list = [gates.RandomSUN()]
 
     save = True
